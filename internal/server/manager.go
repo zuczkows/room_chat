@@ -79,13 +79,7 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 
 	channel := m.channels[channelName]
 
-	var senderClient *Client
-	for client := range m.clients {
-		if client.user == message.User {
-			senderClient = client
-			break
-		}
-	}
+	senderClient := m.findClientByUsername(message.User)
 
 	if senderClient != nil {
 		channel.AddClient(senderClient)
@@ -119,13 +113,7 @@ func (m *Manager) handleLeaveChannel(message chat.Message) {
 
 	channelName := message.Channel
 	if channel, exists := m.channels[channelName]; exists {
-		var senderClient *Client
-		for client := range m.clients {
-			if client.user == message.User {
-				senderClient = client
-				break
-			}
-		}
+		senderClient := m.findClientByUsername(message.User)
 
 		if senderClient != nil {
 			channel.RemoveClient(senderClient)
@@ -176,4 +164,13 @@ func (m *Manager) removeClient(client *Client) {
 		close(client.send)
 		log.Println("Client unregistered")
 	}
+}
+
+func (m *Manager) findClientByUsername(username string) *Client {
+	for client := range m.clients {
+		if client.user == username {
+			return client
+		}
+	}
+	return nil
 }
