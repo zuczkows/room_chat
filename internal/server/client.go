@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"encoding/json"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/zuczkows/room-chat/internal/chat"
 )
 
 const (
@@ -24,7 +25,7 @@ type ClientList map[*Client]bool
 type Client struct {
 	conn    *websocket.Conn
 	manager *Manager
-	send    chan Message
+	send    chan chat.Message
 	user    string
 }
 
@@ -32,8 +33,12 @@ func NewClient(connection *websocket.Conn, manager *Manager) *Client {
 	return &Client{
 		conn:    connection,
 		manager: manager,
-		send:    make(chan Message, 256),
+		send:    make(chan chat.Message, 256),
 	}
+}
+
+func (c *Client) Send() chan<- chat.Message {
+	return c.send
 }
 
 func (c *Client) ReadMessages() {
@@ -57,7 +62,7 @@ func (c *Client) ReadMessages() {
 			}
 			break
 		}
-		var message Message
+		var message chat.Message
 		if err := json.Unmarshal(messageBytes, &message); err != nil {
 			log.Printf("error unmarshaling message: %v", err)
 			continue
@@ -71,6 +76,7 @@ func (c *Client) ReadMessages() {
 	}
 }
 
+// Note zuczkows - I used timeouts and queue from gorilla websockets example https://github.com/gorilla/websocket/blob/main/examples/chat/client.go
 func (c *Client) WriteMessages() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
