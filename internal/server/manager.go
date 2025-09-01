@@ -165,11 +165,12 @@ func (m *Manager) removeClient(client *Client) {
 		if currentChannel != "" {
 			if channel, exists := m.channels[currentChannel]; exists {
 				channel.RemoveClient(client)
+				userName := client.GetUser()
 				leaveMsg := chat.Message{
 					Type:    "system",
 					Channel: channel.Name(),
-					User:    client.user,
-					Content: fmt.Sprintf("%s left the channel", client.user),
+					User:    userName,
+					Content: fmt.Sprintf("%s left the channel", userName),
 				}
 				channel.Broadcast(leaveMsg)
 			}
@@ -183,7 +184,7 @@ func (m *Manager) removeClient(client *Client) {
 
 func (m *Manager) findClientByUsername(username string) *Client {
 	for client := range m.clients {
-		if client.user == username {
+		if client.GetUser() == username {
 			return client
 		}
 	}

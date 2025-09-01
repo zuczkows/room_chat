@@ -58,6 +58,18 @@ func (c *Client) ClearCurrentChannel() {
 	c.currentChannel = ""
 }
 
+func (c *Client) SetUser(username string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.user = username
+}
+
+func (c *Client) GetUser() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.user
+}
+
 func (c *Client) Send() chan<- chat.Message {
 	return c.send
 }
@@ -90,7 +102,7 @@ func (c *Client) ReadMessages() {
 		}
 
 		if c.user == "" && message.User != "" {
-			c.user = message.User
+			c.SetUser(message.User)
 		}
 
 		c.manager.broadcast <- message
