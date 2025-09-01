@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -19,6 +20,10 @@ func NewChannel(name string) *Channel {
 	}
 }
 
+func (ch *Channel) Name() string {
+	return ch.name
+}
+
 func (ch *Channel) AddClient(client Client) {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
@@ -28,6 +33,7 @@ func (ch *Channel) AddClient(client Client) {
 func (ch *Channel) RemoveClient(client Client) {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
+	fmt.Println("Removing user")
 	delete(ch.clients, client)
 }
 

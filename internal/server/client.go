@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -23,10 +24,12 @@ const (
 type ClientList map[*Client]bool
 
 type Client struct {
-	conn    *websocket.Conn
-	manager *Manager
-	send    chan chat.Message
-	user    string
+	conn           *websocket.Conn
+	manager        *Manager
+	send           chan chat.Message
+	user           string
+	currentChannel string
+	mu             sync.RWMutex
 }
 
 func NewClient(connection *websocket.Conn, manager *Manager) *Client {
@@ -35,6 +38,24 @@ func NewClient(connection *websocket.Conn, manager *Manager) *Client {
 		manager: manager,
 		send:    make(chan chat.Message, 256),
 	}
+}
+
+func (c *Client) SetCurrentChannel(channelName string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentChannel = channelName
+}
+
+func (c *Client) GetCurrentChannel() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.currentChannel
+}
+
+func (c *Client) ClearCurrentChannel() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.currentChannel = ""
 }
 
 func (c *Client) Send() chan<- chat.Message {

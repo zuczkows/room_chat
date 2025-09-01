@@ -83,10 +83,12 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 
 	if senderClient != nil {
 		channel.AddClient(senderClient)
+		senderClient.SetCurrentChannel(channelName)
 
 		userJoinedMsg := chat.Message{
 			Type:    "system",
 			Channel: channelName,
+			User:    message.User,
 			Content: fmt.Sprintf("%s joined the channel", message.User),
 		}
 		channel.Broadcast(userJoinedMsg)
@@ -117,6 +119,7 @@ func (m *Manager) handleLeaveChannel(message chat.Message) {
 
 		if senderClient != nil {
 			channel.RemoveClient(senderClient)
+			senderClient.ClearCurrentChannel()
 
 			leaveMsg := chat.Message{
 				Type:    "system",
@@ -157,9 +160,21 @@ func (m *Manager) removeClient(client *Client) {
 	defer m.mu.Unlock()
 	_, exists := m.clients[client]
 	if exists {
-		for _, channel := range m.channels {
-			channel.RemoveClient(client)
+		currentChannel := client.GetCurrentChannel()
+
+		if currentChannel != "" {
+			if channel, exists := m.channels[currentChannel]; exists {
+				channel.RemoveClient(client)
+				leaveMsg := chat.Message{
+					Type:    "system",
+					Channel: channel.Name(),
+					User:    client.user,
+					Content: fmt.Sprintf("%s left the channel", client.user),
+				}
+				channel.Broadcast(leaveMsg)
+			}
 		}
+
 		delete(m.clients, client)
 		close(client.send)
 		log.Println("Client unregistered")
