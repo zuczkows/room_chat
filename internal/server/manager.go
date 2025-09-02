@@ -199,8 +199,6 @@ func (m *Manager) removeClient(client *Client) {
 }
 
 func (m *Manager) findClientByUsername(username string) *Client {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	for client := range m.clients {
 		if client.GetUser() == username {
 			return client
