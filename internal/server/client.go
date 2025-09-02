@@ -2,7 +2,7 @@ package server
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -11,13 +11,9 @@ import (
 )
 
 const (
-	// Time allowed to write a message to the peer
-	writeWait = 10 * time.Second
-	// Time allowed to read the next pong message from the peer
-	pongWait = 60 * time.Second
-	// Send pings to peer with this period. Must be less than pongWait
-	pingPeriod = (pongWait * 9) / 10
-	// Maximum message size allowed from peer
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = (pongWait * 9) / 10 // Must be less than pongWait
 	maxMessageSize = 512
 )
 
@@ -30,13 +26,15 @@ type Client struct {
 	user           string
 	currentChannel string
 	mu             sync.RWMutex
+	logger         *slog.Logger
 }
 
-func NewClient(connection *websocket.Conn, manager *Manager) *Client {
+func NewClient(connection *websocket.Conn, manager *Manager, logger *slog.Logger) *Client {
 	return &Client{
 		conn:    connection,
 		manager: manager,
 		send:    make(chan chat.Message, 256),
+		logger:  logger,
 	}
 }
 
@@ -82,22 +80,19 @@ func (c *Client) ReadMessages() {
 
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetPongHandler(func(string) error {
-		c.conn.SetReadDeadline(time.Now().Add(pongWait))
-		return nil
-	})
+	c.conn.SetPongHandler(c.pongHandler)
 
 	for {
 		_, messageBytes, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				c.logger.Error("Unexpected WebSocket close error", slog.Any("error", err))
 			}
 			break
 		}
 		var message chat.Message
 		if err := json.Unmarshal(messageBytes, &message); err != nil {
-			log.Printf("error unmarshaling message: %v", err)
+			c.logger.Error("error marshaling queued message", slog.Any("error", err))
 			continue
 		}
 
@@ -121,7 +116,6 @@ func (c *Client) WriteMessages() {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				// The hub closed the channel
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -133,7 +127,7 @@ func (c *Client) WriteMessages() {
 
 			messageBytes, err := json.Marshal(message)
 			if err != nil {
-				log.Printf("error marshaling message: %v", err)
+				c.logger.Error("error marshaling queued message", slog.Any("error", err))
 				return
 			}
 			w.Write(messageBytes)
@@ -145,7 +139,7 @@ func (c *Client) WriteMessages() {
 				nextMessage := <-c.send
 				nextMessageBytes, err := json.Marshal(nextMessage)
 				if err != nil {
-					log.Printf("error marshaling queued message: %v", err)
+					c.logger.Error("error marshaling queued message", slog.Any("error", err))
 					continue
 				}
 				w.Write(nextMessageBytes)
@@ -160,6 +154,15 @@ func (c *Client) WriteMessages() {
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
+			c.logger.Debug("Heartbeat ping sent",
+				slog.String("user", c.GetUser()),
+				slog.String("channel", c.GetCurrentChannel())) // debug print to check heartbeating
 		}
 	}
+}
+
+func (c *Client) pongHandler(pongMsg string) error {
+	c.logger.Debug("Heartbeat pong received",
+		slog.String("user", c.GetUser())) // debug print to check heartbeating
+	return c.conn.SetReadDeadline(time.Now().Add(pongWait))
 }
