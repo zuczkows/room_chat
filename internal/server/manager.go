@@ -8,23 +8,21 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/zuczkows/room-chat/internal/chat"
+	"github.com/zuczkows/room-chat/internal/config"
 )
 
-var (
-	websocketUpgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin:     checkOrigin,
+func getUpgraderWithConfig(cfg *config.Config) websocket.Upgrader {
+	return websocket.Upgrader{
+		ReadBufferSize:  config.ReadBufferSize,
+		WriteBufferSize: config.WriteBufferSize,
+		CheckOrigin:     createOriginChecker(cfg),
 	}
-)
+}
 
-func checkOrigin(r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	switch origin {
-	case "http://localhost:8080":
-		return true
-	default:
-		return false
+func createOriginChecker(cfg *config.Config) func(*http.Request) bool {
+	return func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		return cfg.Server.IsOriginAllowed(origin)
 	}
 }
 
@@ -38,9 +36,10 @@ type Manager struct {
 	broadcast  chan chat.Message
 	mu         sync.RWMutex
 	logger     *slog.Logger
+	config     *config.Config
 }
 
-func NewManager(logger *slog.Logger) *Manager {
+func NewManager(logger *slog.Logger, cfg *config.Config) *Manager {
 	return &Manager{
 		channels:   make(map[string]*chat.Channel),
 		clients:    make(ClientList),
@@ -48,6 +47,7 @@ func NewManager(logger *slog.Logger) *Manager {
 		unregister: make(chan *Client),
 		broadcast:  make(chan chat.Message),
 		logger:     logger,
+		config:     cfg,
 	}
 }
 
@@ -150,7 +150,8 @@ func (m *Manager) handleLeaveChannel(message chat.Message) {
 }
 
 func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := websocketUpgrader.Upgrade(w, r, nil)
+	upgrader := getUpgraderWithConfig(m.config)
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		m.logger.Error("WebSocket upgrade failed", slog.Any("error", err))
 		return
