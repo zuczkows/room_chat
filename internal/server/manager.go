@@ -96,7 +96,7 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 		senderClient.SetCurrentChannel(channelName)
 
 		userJoinedMsg := chat.Message{
-			Type:    "system",
+			Type:    chat.MessageActionSystem,
 			Channel: channelName,
 			User:    message.User,
 			Content: fmt.Sprintf("%s joined the channel", message.User),
@@ -136,7 +136,7 @@ func (m *Manager) handleLeaveChannel(message chat.Message) {
 			senderClient.ClearCurrentChannel()
 
 			leaveMsg := chat.Message{
-				Type:    "system",
+				Type:    chat.MessageActionSystem,
 				Channel: channelName,
 				Content: fmt.Sprintf("%s left the channel", message.User),
 			}
@@ -184,7 +184,7 @@ func (m *Manager) removeClient(client *Client) {
 				channel.RemoveClient(client)
 				userName := client.GetUser()
 				leaveMsg := chat.Message{
-					Type:    "system",
+					Type:    chat.MessageActionSystem,
 					Channel: channel.Name(),
 					User:    userName,
 					Content: fmt.Sprintf("%s left the channel", userName),

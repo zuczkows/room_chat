@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -86,7 +87,22 @@ func (c *Client) ReadMessages() {
 		}
 		var message chat.Message
 		if err := json.Unmarshal(messageBytes, &message); err != nil {
-			c.logger.Error("error marshaling queued message", slog.Any("error", err))
+			c.logger.Error("error marshaling message", slog.Any("error", err))
+			continue
+		}
+
+		if err := message.Validate(); err != nil {
+			c.logger.Error("message validation failed",
+				slog.Any("error", err),
+				slog.String("user", c.GetUser()))
+
+			errorMsg := chat.Message{
+				Type:    "error",
+				Channel: message.Channel,
+				User:    "system",
+				Content: fmt.Sprintf("Message validation failed: %v", err),
+			}
+			c.send <- errorMsg
 			continue
 		}
 
