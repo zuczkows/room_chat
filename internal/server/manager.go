@@ -80,7 +80,7 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	channelName := message.Channel //NOTE validate Message not empty in struct validate
+	channelName := message.Channel
 
 	if _, exists := m.channels[channelName]; !exists {
 		m.channels[channelName] = chat.NewChannel(channelName)
@@ -146,6 +146,11 @@ func (m *Manager) handleLeaveChannel(message chat.Message) {
 				slog.String("user", message.User),
 				slog.String("channel", channelName))
 		}
+		if activeUsers := len(channel.ListUsers()); activeUsers == 0 {
+			delete(m.channels, channelName)
+			m.logger.Info("Channel deleted", slog.String("channel", channelName))
+		}
+
 	}
 }
 

@@ -46,6 +46,10 @@ func (ch *Channel) Broadcast(message Message) {
 	}
 }
 
+func (ch *Channel) ListUsers() ClientSet {
+	return ch.clients
+}
+
 // Note zuczkows - not sure if it is the right place and proper solution but it avoids import cycle
 type Client interface {
 	Send() chan<- Message
