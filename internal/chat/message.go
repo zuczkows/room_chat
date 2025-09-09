@@ -5,16 +5,17 @@ import "github.com/go-playground/validator/v10"
 type MessageAction string
 
 const (
-	MesageActionJoin     MessageAction = "join"
-	MessageActionLeave   MessageAction = "leave"
-	MessageActionMessage MessageAction = "message"
-	MessageActionSystem  MessageAction = "system"
+	MesageActionJoin    MessageAction = "join"
+	MessageActionLeave  MessageAction = "leave"
+	MessageActionText   MessageAction = "message"
+	MessageActionSystem MessageAction = "system"
+	ErrorMessage        MessageAction = "error"
 )
 
 type Message struct {
 	Type    MessageAction `json:"type" validate:"required,oneof=join leave message"`
-	Channel string        `json:"channel" validate:"required,min=1,max=50"`
-	User    string        `json:"user" validate:"required,min=1,max=30"`
+	Channel string        `json:"channel,omitempty" validate:"min=1,max=50"`
+	User    string        `json:"user,omitempty" validate:"min=1,max=30"`
 	Content string        `json:"content" validate:"max=500"`
 }
 

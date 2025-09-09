@@ -3,7 +3,6 @@ module github.com/zuczkows/room-chat
 go 1.24.4
 
 require (
-	github.com/cloudflare/cfssl v1.6.5
 	github.com/go-playground/validator/v10 v10.27.0
 	github.com/gorilla/websocket v1.5.3
 )

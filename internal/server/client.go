@@ -88,6 +88,11 @@ func (c *Client) ReadMessages() {
 		var message chat.Message
 		if err := json.Unmarshal(messageBytes, &message); err != nil {
 			c.logger.Error("error marshaling message", slog.Any("error", err))
+			errorMsg := chat.Message{
+				Type:    chat.ErrorMessage,
+				Content: fmt.Sprintf("Message validation failed: %v", err),
+			}
+			c.send <- errorMsg
 			continue
 		}
 
@@ -97,9 +102,7 @@ func (c *Client) ReadMessages() {
 				slog.String("user", c.GetUser()))
 
 			errorMsg := chat.Message{
-				Type:    "error",
-				Channel: message.Channel,
-				User:    "system",
+				Type:    chat.ErrorMessage,
 				Content: fmt.Sprintf("Message validation failed: %v", err),
 			}
 			c.send <- errorMsg

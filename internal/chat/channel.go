@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -33,7 +32,6 @@ func (ch *Channel) AddClient(client Client) {
 func (ch *Channel) RemoveClient(client Client) {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
-	fmt.Println("Removing user")
 	delete(ch.clients, client)
 }
 
@@ -46,8 +44,19 @@ func (ch *Channel) Broadcast(message Message) {
 	}
 }
 
-func (ch *Channel) ListUsers() ClientSet {
+func (ch *Channel) listUsers() ClientSet {
 	return ch.clients
+}
+
+func (ch *Channel) HasUser(client Client) bool {
+	if _, exists := ch.listUsers()[client]; exists {
+		return true
+	}
+	return false
+}
+
+func (ch *Channel) ActiveUsers() int {
+	return len(ch.listUsers())
 }
 
 // Note zuczkows - not sure if it is the right place and proper solution but it avoids import cycle

@@ -71,7 +71,7 @@ func (m *Manager) handleMessage(message chat.Message) {
 		m.handleJoinChannel(message)
 	case chat.MessageActionLeave:
 		m.handleLeaveChannel(message)
-	case chat.MessageActionMessage:
+	case chat.MessageActionText:
 		m.handleSendMessage(message)
 	}
 }
@@ -81,15 +81,21 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 	defer m.mu.Unlock()
 
 	channelName := message.Channel
+	senderClient := m.findClientByUsername(message.User)
 
-	if _, exists := m.channels[channelName]; !exists {
+	channel, exists := m.channels[channelName]
+	if exists && channel.HasUser(senderClient) {
+		userAlreadyInChannelMsg := chat.Message{
+			Type:    chat.MessageActionSystem,
+			Content: fmt.Sprintf("You are already in a channel: %s", channelName),
+		}
+		senderClient.send <- userAlreadyInChannelMsg
+		return
+	} else {
 		m.channels[channelName] = chat.NewChannel(channelName)
+		channel = m.channels[channelName]
 		m.logger.Info("Created new channel", slog.String("channel", channelName))
 	}
-
-	channel := m.channels[channelName]
-
-	senderClient := m.findClientByUsername(message.User)
 
 	if senderClient != nil {
 		channel.AddClient(senderClient)
@@ -112,15 +118,30 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 func (m *Manager) handleSendMessage(message chat.Message) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	senderClient := m.findClientByUsername(message.User)
 
-	if channel, exists := m.channels[message.Channel]; exists {
-		channel.Broadcast(message)
-		m.logger.Info("Message sent to channel",
-			slog.String("channel", message.Channel),
-			slog.String("user", message.User))
+	channel, exists := m.channels[message.Channel]
+	if exists {
+		if channel.HasUser(senderClient) {
+			channel.Broadcast(message)
+			m.logger.Info("Message sent to channel",
+				slog.String("channel", message.Channel),
+				slog.String("user", message.User))
+			return
+		} else {
+			userNotInChannel := chat.Message{
+				Type:    chat.MessageActionSystem,
+				Content: fmt.Sprintf("You are not a member of this channel: %s", message.Channel),
+			}
+			senderClient.send <- userNotInChannel
+		}
+	} else {
+		channelNotExists := chat.Message{
+			Type:    chat.MessageActionSystem,
+			Content: fmt.Sprintf("Channel does not exists: %s", message.Channel),
+		}
+		senderClient.send <- channelNotExists
 	}
-
-	// Notify sender that channel dont exists
 }
 
 func (m *Manager) handleLeaveChannel(message chat.Message) {
@@ -131,7 +152,7 @@ func (m *Manager) handleLeaveChannel(message chat.Message) {
 	if channel, exists := m.channels[channelName]; exists {
 		senderClient := m.findClientByUsername(message.User)
 
-		if senderClient != nil {
+		if senderClient != nil && channel.HasUser(senderClient) {
 			channel.RemoveClient(senderClient)
 			senderClient.ClearCurrentChannel()
 
@@ -146,7 +167,7 @@ func (m *Manager) handleLeaveChannel(message chat.Message) {
 				slog.String("user", message.User),
 				slog.String("channel", channelName))
 		}
-		if activeUsers := len(channel.ListUsers()); activeUsers == 0 {
+		if activeUsers := channel.ActiveUsers(); activeUsers == 0 {
 			delete(m.channels, channelName)
 			m.logger.Info("Channel deleted", slog.String("channel", channelName))
 		}
