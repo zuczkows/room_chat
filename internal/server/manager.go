@@ -9,6 +9,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/zuczkows/room-chat/internal/chat"
 	"github.com/zuczkows/room-chat/internal/config"
+	"github.com/zuczkows/room-chat/internal/connection"
 )
 
 const (
@@ -32,13 +33,13 @@ func createOriginChecker(cfg *config.Config) func(*http.Request) bool {
 }
 
 type ChannelList map[string]*chat.Channel
-type ClientList map[*Client]bool
+type ClientList map[*connection.Client]bool
 
 type Manager struct {
 	channels        ChannelList
 	clients         ClientList
-	register        chan *Client
-	unregister      chan *Client
+	register        chan *connection.Client
+	unregister      chan *connection.Client
 	dispatchMessage chan chat.Message
 	mu              sync.RWMutex
 	logger          *slog.Logger
@@ -49,8 +50,8 @@ func NewManager(logger *slog.Logger, cfg *config.Config) *Manager {
 	return &Manager{
 		channels:        make(map[string]*chat.Channel),
 		clients:         make(ClientList),
-		register:        make(chan *Client),
-		unregister:      make(chan *Client),
+		register:        make(chan *connection.Client),
+		unregister:      make(chan *connection.Client),
 		dispatchMessage: make(chan chat.Message),
 		logger:          logger,
 		config:          cfg,
@@ -96,7 +97,7 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 				Type:    chat.MessageActionSystem,
 				Content: fmt.Sprintf("You are already in a channel: %s", channelName),
 			}
-			senderClient.send <- userAlreadyInChannelMsg
+			senderClient.Send() <- userAlreadyInChannelMsg
 			return
 		}
 	} else {
@@ -141,14 +142,14 @@ func (m *Manager) handleSendMessage(message chat.Message) {
 				Type:    chat.MessageActionSystem,
 				Content: fmt.Sprintf("You are not a member of this channel: %s", message.Channel),
 			}
-			senderClient.send <- userNotInChannel
+			senderClient.Send() <- userNotInChannel
 		}
 	} else {
 		channelNotExists := chat.Message{
 			Type:    chat.MessageActionSystem,
 			Content: fmt.Sprintf("Channel does not exists: %s", message.Channel),
 		}
-		senderClient.send <- channelNotExists
+		senderClient.Send() <- channelNotExists
 	}
 }
 
@@ -191,7 +192,7 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := NewClient(conn, m.unregister, m.dispatchMessage, m.logger)
+	client := connection.NewClient(conn, m.unregister, m.dispatchMessage, m.logger)
 
 	m.register <- client
 	go client.ReadMessages()
@@ -199,14 +200,14 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (m *Manager) addClient(client *Client) {
+func (m *Manager) addClient(client *connection.Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.clients[client] = true
 	m.logger.Info("Client added", slog.Int("total_clients", len(m.clients)))
 }
 
-func (m *Manager) removeClient(client *Client) {
+func (m *Manager) removeClient(client *connection.Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, exists := m.clients[client]
@@ -228,12 +229,12 @@ func (m *Manager) removeClient(client *Client) {
 		}
 
 		delete(m.clients, client)
-		close(client.send)
+		close(client.Send())
 		m.logger.Info("Client unregistered")
 	}
 }
 
-func (m *Manager) findClientByUsername(username string) *Client {
+func (m *Manager) findClientByUsername(username string) *connection.Client {
 	for client := range m.clients {
 		if client.GetUser() == username {
 			return client

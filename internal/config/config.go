@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -51,10 +52,5 @@ func (c *LoggingConfig) GetSlogLevel() slog.Level {
 }
 
 func (c *ServerConfig) IsOriginAllowed(origin string) bool {
-	for _, allowedOrigin := range c.AllowedOrigins {
-		if allowedOrigin == origin {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.AllowedOrigins, origin)
 }

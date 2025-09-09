@@ -1,4 +1,4 @@
-package server
+package connection
 
 import (
 	"encoding/json"
