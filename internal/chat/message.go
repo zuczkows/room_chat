@@ -12,6 +12,8 @@ const (
 	ErrorMessage        MessageAction = "error"
 )
 
+var validate = validator.New()
+
 type Message struct {
 	Type    MessageAction `json:"type" validate:"required,oneof=join leave message"`
 	Channel string        `json:"channel,omitempty" validate:"min=1,max=50"`
@@ -22,6 +24,5 @@ type Message struct {
 // note from zuczkows - I think I should manually check struct and return nice
 // error msg that i want instead of validate.Struct
 func (m *Message) Validate() error {
-	validate := validator.New()
 	return validate.Struct(m)
 }
