@@ -84,13 +84,15 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 	senderClient := m.findClientByUsername(message.User)
 
 	channel, exists := m.channels[channelName]
-	if exists && channel.HasUser(senderClient) {
-		userAlreadyInChannelMsg := chat.Message{
-			Type:    chat.MessageActionSystem,
-			Content: fmt.Sprintf("You are already in a channel: %s", channelName),
+	if exists {
+		if channel.HasUser(senderClient) {
+			userAlreadyInChannelMsg := chat.Message{
+				Type:    chat.MessageActionSystem,
+				Content: fmt.Sprintf("You are already in a channel: %s", channelName),
+			}
+			senderClient.send <- userAlreadyInChannelMsg
+			return
 		}
-		senderClient.send <- userAlreadyInChannelMsg
-		return
 	} else {
 		m.channels[channelName] = chat.NewChannel(channelName)
 		channel = m.channels[channelName]
