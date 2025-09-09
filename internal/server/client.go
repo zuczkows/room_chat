@@ -16,7 +16,8 @@ type ClientList map[*Client]bool
 
 type Client struct {
 	conn           *websocket.Conn
-	manager        *Manager
+	closeCh        chan *Client
+	dispatchCh     chan chat.Message
 	send           chan chat.Message
 	user           string
 	currentChannel string
@@ -24,12 +25,13 @@ type Client struct {
 	logger         *slog.Logger
 }
 
-func NewClient(connection *websocket.Conn, manager *Manager, logger *slog.Logger) *Client {
+func NewClient(connection *websocket.Conn, closeCh chan *Client, dispatchCh chan chat.Message, logger *slog.Logger) *Client {
 	return &Client{
-		conn:    connection,
-		manager: manager,
-		send:    make(chan chat.Message, 256),
-		logger:  logger,
+		conn:       connection,
+		closeCh:    closeCh,
+		dispatchCh: dispatchCh,
+		send:       make(chan chat.Message, 256),
+		logger:     logger,
 	}
 }
 
@@ -69,7 +71,7 @@ func (c *Client) Send() chan<- chat.Message {
 
 func (c *Client) ReadMessages() {
 	defer func() {
-		c.manager.unregister <- c
+		c.closeCh <- c
 		c.conn.Close()
 	}()
 
@@ -113,7 +115,7 @@ func (c *Client) ReadMessages() {
 			c.SetUser(message.User)
 		}
 
-		c.manager.broadcast <- message
+		c.dispatchCh <- message
 	}
 }
 

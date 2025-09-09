@@ -29,25 +29,25 @@ func createOriginChecker(cfg *config.Config) func(*http.Request) bool {
 type ChannelList map[string]*chat.Channel
 
 type Manager struct {
-	channels   ChannelList
-	clients    ClientList
-	register   chan *Client
-	unregister chan *Client
-	broadcast  chan chat.Message
-	mu         sync.RWMutex
-	logger     *slog.Logger
-	config     *config.Config
+	channels        ChannelList
+	clients         ClientList
+	register        chan *Client
+	unregister      chan *Client
+	dispatchMessage chan chat.Message
+	mu              sync.RWMutex
+	logger          *slog.Logger
+	config          *config.Config
 }
 
 func NewManager(logger *slog.Logger, cfg *config.Config) *Manager {
 	return &Manager{
-		channels:   make(map[string]*chat.Channel),
-		clients:    make(ClientList),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		broadcast:  make(chan chat.Message),
-		logger:     logger,
-		config:     cfg,
+		channels:        make(map[string]*chat.Channel),
+		clients:         make(ClientList),
+		register:        make(chan *Client),
+		unregister:      make(chan *Client),
+		dispatchMessage: make(chan chat.Message),
+		logger:          logger,
+		config:          cfg,
 	}
 }
 
@@ -58,7 +58,7 @@ func (m *Manager) Run() {
 			m.addClient(client)
 		case client := <-m.unregister:
 			m.removeClient(client)
-		case message := <-m.broadcast:
+		case message := <-m.dispatchMessage:
 			m.handleMessage(message)
 		}
 
@@ -185,7 +185,7 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := NewClient(conn, m, m.logger)
+	client := NewClient(conn, m.unregister, m.dispatchMessage, m.logger)
 
 	m.register <- client
 	go client.ReadMessages()

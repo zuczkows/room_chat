@@ -44,19 +44,19 @@ func (ch *Channel) Broadcast(message Message) {
 	}
 }
 
-func (ch *Channel) listUsers() ClientSet {
-	return ch.clients
-}
-
 func (ch *Channel) HasUser(client Client) bool {
-	if _, exists := ch.listUsers()[client]; exists {
+	ch.mu.RLock()
+	defer ch.mu.RUnlock()
+	if _, exists := ch.clients[client]; exists {
 		return true
 	}
 	return false
 }
 
 func (ch *Channel) ActiveUsers() int {
-	return len(ch.listUsers())
+	ch.mu.RLock()
+	defer ch.mu.RUnlock()
+	return len(ch.clients)
 }
 
 // Note zuczkows - not sure if it is the right place and proper solution but it avoids import cycle
