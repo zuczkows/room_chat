@@ -5,16 +5,6 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"time"
-)
-
-const (
-	WriteWait       = 10 * time.Second
-	PongWait        = 60 * time.Second
-	PingInterval    = (PongWait * 9) / 10 // Must be less than PongWait
-	MaxMessageSize  = 512
-	ReadBufferSize  = 1024
-	WriteBufferSize = 1024
 )
 
 type Config struct {

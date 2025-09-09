@@ -9,7 +9,13 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/zuczkows/room-chat/internal/chat"
-	"github.com/zuczkows/room-chat/internal/config"
+)
+
+const (
+	WriteWait      = 10 * time.Second
+	PongWait       = 60 * time.Second
+	PingInterval   = (PongWait * 9) / 10 // Must be less than PongWait
+	MaxMessageSize = 512
 )
 
 type ClientList map[*Client]bool
@@ -75,8 +81,8 @@ func (c *Client) ReadMessages() {
 		c.conn.Close()
 	}()
 
-	c.conn.SetReadLimit(config.MaxMessageSize)
-	c.conn.SetReadDeadline(time.Now().Add(config.PongWait))
+	c.conn.SetReadLimit(MaxMessageSize)
+	c.conn.SetReadDeadline(time.Now().Add(PongWait))
 	c.conn.SetPongHandler(c.pongHandler)
 
 	for {
@@ -121,7 +127,7 @@ func (c *Client) ReadMessages() {
 
 // Note zuczkows - I used timeouts and queue from gorilla websockets example https://github.com/gorilla/websocket/blob/main/examples/chat/client.go
 func (c *Client) WriteMessages() {
-	ticker := time.NewTicker(config.PingInterval)
+	ticker := time.NewTicker(PingInterval)
 	defer func() {
 		c.conn.Close()
 	}()
@@ -129,7 +135,7 @@ func (c *Client) WriteMessages() {
 	for {
 		select {
 		case message, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(config.WriteWait))
+			c.conn.SetWriteDeadline(time.Now().Add(WriteWait))
 			if !ok {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
@@ -165,7 +171,7 @@ func (c *Client) WriteMessages() {
 			}
 
 		case <-ticker.C:
-			c.conn.SetWriteDeadline(time.Now().Add(config.WriteWait))
+			c.conn.SetWriteDeadline(time.Now().Add(WriteWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -179,5 +185,5 @@ func (c *Client) WriteMessages() {
 func (c *Client) pongHandler(pongMsg string) error {
 	c.logger.Debug("Heartbeat pong received",
 		slog.String("user", c.GetUser())) // debug print to check heartbeating
-	return c.conn.SetReadDeadline(time.Now().Add(config.PongWait))
+	return c.conn.SetReadDeadline(time.Now().Add(PongWait))
 }

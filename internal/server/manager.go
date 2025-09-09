@@ -11,10 +11,15 @@ import (
 	"github.com/zuczkows/room-chat/internal/config"
 )
 
+const (
+	ReadBufferSize  = 1024
+	WriteBufferSize = 1024
+)
+
 func getUpgraderWithConfig(cfg *config.Config) websocket.Upgrader {
 	return websocket.Upgrader{
-		ReadBufferSize:  config.ReadBufferSize,
-		WriteBufferSize: config.WriteBufferSize,
+		ReadBufferSize:  ReadBufferSize,
+		WriteBufferSize: WriteBufferSize,
 		CheckOrigin:     createOriginChecker(cfg),
 	}
 }
