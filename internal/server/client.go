@@ -18,8 +18,6 @@ const (
 	MaxMessageSize = 512
 )
 
-type ClientList map[*Client]bool
-
 type Client struct {
 	conn           *websocket.Conn
 	closeCh        chan *Client

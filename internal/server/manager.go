@@ -32,6 +32,7 @@ func createOriginChecker(cfg *config.Config) func(*http.Request) bool {
 }
 
 type ChannelList map[string]*chat.Channel
+type ClientList map[*Client]bool
 
 type Manager struct {
 	channels        ChannelList
