@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/zuczkows/room-chat/internal/chat"
+	"github.com/zuczkows/room-chat/internal/protocol"
 )
 
 const (
@@ -21,20 +21,20 @@ const (
 type Client struct {
 	conn           *websocket.Conn
 	closeCh        chan *Client
-	dispatchCh     chan chat.Message
-	send           chan chat.Message
+	dispatchCh     chan protocol.Message
+	send           chan protocol.Message
 	user           string
 	currentChannel string
 	mu             sync.RWMutex
 	logger         *slog.Logger
 }
 
-func NewClient(connection *websocket.Conn, closeCh chan *Client, dispatchCh chan chat.Message, logger *slog.Logger) *Client {
+func NewClient(connection *websocket.Conn, closeCh chan *Client, dispatchCh chan protocol.Message, logger *slog.Logger) *Client {
 	return &Client{
 		conn:       connection,
 		closeCh:    closeCh,
 		dispatchCh: dispatchCh,
-		send:       make(chan chat.Message, 256),
+		send:       make(chan protocol.Message, 256),
 		logger:     logger,
 	}
 }
@@ -69,7 +69,7 @@ func (c *Client) GetUser() string {
 	return c.user
 }
 
-func (c *Client) Send() chan<- chat.Message {
+func (c *Client) Send() chan<- protocol.Message {
 	return c.send
 }
 
@@ -91,11 +91,11 @@ func (c *Client) ReadMessages() {
 			}
 			break
 		}
-		var message chat.Message
+		var message protocol.Message
 		if err := json.Unmarshal(messageBytes, &message); err != nil {
 			c.logger.Error("error marshaling message", slog.Any("error", err))
-			errorMsg := chat.Message{
-				Type:    chat.ErrorMessage,
+			errorMsg := protocol.Message{
+				Type:    protocol.ErrorMessage,
 				Content: fmt.Sprintf("Message validation failed: %v", err),
 			}
 			c.send <- errorMsg
@@ -107,8 +107,8 @@ func (c *Client) ReadMessages() {
 				slog.Any("error", err),
 				slog.String("user", c.GetUser()))
 
-			errorMsg := chat.Message{
-				Type:    chat.ErrorMessage,
+			errorMsg := protocol.Message{
+				Type:    protocol.ErrorMessage,
 				Content: fmt.Sprintf("Message validation failed: %v", err),
 			}
 			c.send <- errorMsg

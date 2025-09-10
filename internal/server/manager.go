@@ -10,6 +10,7 @@ import (
 	"github.com/zuczkows/room-chat/internal/chat"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/connection"
+	"github.com/zuczkows/room-chat/internal/protocol"
 )
 
 const (
@@ -40,7 +41,7 @@ type Manager struct {
 	clients         ClientList
 	register        chan *connection.Client
 	unregister      chan *connection.Client
-	dispatchMessage chan chat.Message
+	dispatchMessage chan protocol.Message
 	mu              sync.RWMutex
 	logger          *slog.Logger
 	config          *config.Config
@@ -52,7 +53,7 @@ func NewManager(logger *slog.Logger, cfg *config.Config) *Manager {
 		clients:         make(ClientList),
 		register:        make(chan *connection.Client),
 		unregister:      make(chan *connection.Client),
-		dispatchMessage: make(chan chat.Message),
+		dispatchMessage: make(chan protocol.Message),
 		logger:          logger,
 		config:          cfg,
 	}
@@ -72,18 +73,18 @@ func (m *Manager) Run() {
 	}
 }
 
-func (m *Manager) handleMessage(message chat.Message) {
+func (m *Manager) handleMessage(message protocol.Message) {
 	switch message.Type {
-	case chat.MesageActionJoin:
+	case protocol.MesageActionJoin:
 		m.handleJoinChannel(message)
-	case chat.MessageActionLeave:
+	case protocol.MessageActionLeave:
 		m.handleLeaveChannel(message)
-	case chat.MessageActionText:
+	case protocol.MessageActionText:
 		m.handleSendMessage(message)
 	}
 }
 
-func (m *Manager) handleJoinChannel(message chat.Message) {
+func (m *Manager) handleJoinChannel(message protocol.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -93,8 +94,8 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 	channel, exists := m.channels[channelName]
 	if exists {
 		if channel.HasUser(senderClient) {
-			userAlreadyInChannelMsg := chat.Message{
-				Type:    chat.MessageActionSystem,
+			userAlreadyInChannelMsg := protocol.Message{
+				Type:    protocol.MessageActionSystem,
 				Content: fmt.Sprintf("You are already in a channel: %s", channelName),
 			}
 			senderClient.Send() <- userAlreadyInChannelMsg
@@ -110,8 +111,8 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 		channel.AddClient(senderClient)
 		senderClient.SetCurrentChannel(channelName)
 
-		userJoinedMsg := chat.Message{
-			Type:    chat.MessageActionSystem,
+		userJoinedMsg := protocol.Message{
+			Type:    protocol.MessageActionSystem,
 			Channel: channelName,
 			User:    message.User,
 			Content: fmt.Sprintf("%s joined the channel", message.User),
@@ -124,7 +125,7 @@ func (m *Manager) handleJoinChannel(message chat.Message) {
 
 }
 
-func (m *Manager) handleSendMessage(message chat.Message) {
+func (m *Manager) handleSendMessage(message protocol.Message) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	senderClient := m.findClientByUsername(message.User)
@@ -138,22 +139,22 @@ func (m *Manager) handleSendMessage(message chat.Message) {
 				slog.String("user", message.User))
 			return
 		} else {
-			userNotInChannel := chat.Message{
-				Type:    chat.MessageActionSystem,
+			userNotInChannel := protocol.Message{
+				Type:    protocol.MessageActionSystem,
 				Content: fmt.Sprintf("You are not a member of this channel: %s", message.Channel),
 			}
 			senderClient.Send() <- userNotInChannel
 		}
 	} else {
-		channelNotExists := chat.Message{
-			Type:    chat.MessageActionSystem,
+		channelNotExists := protocol.Message{
+			Type:    protocol.MessageActionSystem,
 			Content: fmt.Sprintf("Channel does not exists: %s", message.Channel),
 		}
 		senderClient.Send() <- channelNotExists
 	}
 }
 
-func (m *Manager) handleLeaveChannel(message chat.Message) {
+func (m *Manager) handleLeaveChannel(message protocol.Message) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -165,8 +166,8 @@ func (m *Manager) handleLeaveChannel(message chat.Message) {
 			channel.RemoveClient(senderClient)
 			senderClient.ClearCurrentChannel()
 
-			leaveMsg := chat.Message{
-				Type:    chat.MessageActionSystem,
+			leaveMsg := protocol.Message{
+				Type:    protocol.MessageActionSystem,
 				Channel: channelName,
 				Content: fmt.Sprintf("%s left the channel", message.User),
 			}
@@ -218,8 +219,8 @@ func (m *Manager) removeClient(client *connection.Client) {
 			if channel, exists := m.channels[currentChannel]; exists {
 				channel.RemoveClient(client)
 				userName := client.GetUser()
-				leaveMsg := chat.Message{
-					Type:    chat.MessageActionSystem,
+				leaveMsg := protocol.Message{
+					Type:    protocol.MessageActionSystem,
 					Channel: channel.Name(),
 					User:    userName,
 					Content: fmt.Sprintf("%s left the channel", userName),
