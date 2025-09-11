@@ -56,7 +56,7 @@ func (ch *Channel) HasUser(client *connection.Client) bool {
 	return false
 }
 
-func (ch *Channel) ActiveUsers() int {
+func (ch *Channel) ActiveUsersCount() int {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
 	return len(ch.clients)
