@@ -2,15 +2,20 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/zuczkows/room-chat/internal/chat"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/connection"
+	"github.com/zuczkows/room-chat/internal/handlers"
+	"github.com/zuczkows/room-chat/internal/middleware"
 	"github.com/zuczkows/room-chat/internal/protocol"
+	"github.com/zuczkows/room-chat/internal/user"
 )
 
 const (
@@ -45,9 +50,11 @@ type Manager struct {
 	mu              sync.RWMutex
 	logger          *slog.Logger
 	config          *config.Config
+	server          *http.Server
+	userService     *user.Service
 }
 
-func NewManager(logger *slog.Logger, cfg *config.Config) *Manager {
+func NewManager(logger *slog.Logger, cfg *config.Config, userService *user.Service) *Manager {
 	return &Manager{
 		channels:        make(map[string]*chat.Channel),
 		clients:         make(ClientList),
@@ -56,7 +63,31 @@ func NewManager(logger *slog.Logger, cfg *config.Config) *Manager {
 		dispatchMessage: make(chan protocol.Message),
 		logger:          logger,
 		config:          cfg,
+		userService:     userService,
 	}
+}
+
+func (m *Manager) Mount() http.Handler {
+	r := http.NewServeMux()
+	userHandler := handlers.NewUserHandler(m.userService, m.logger)
+	authMiddleware := middleware.NewAuthMiddleware(m.userService, m.logger)
+
+	r.HandleFunc("GET /ws", m.ServeWS)
+	r.HandleFunc("POST /api/register", userHandler.HandleRegister)
+	r.Handle("PUT /api/profile", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleUpdate)))
+	return r
+}
+
+func (m *Manager) StartServ(mux http.Handler) {
+	m.server = &http.Server{
+		Addr:         fmt.Sprintf(":%d", m.config.Server.Port),
+		Handler:      mux,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	m.logger.Info("Starting server", "address", m.config.Server.Port)
+	log.Fatal(m.server.ListenAndServe())
 }
 
 func (m *Manager) Run() {

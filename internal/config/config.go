@@ -9,13 +9,23 @@ import (
 )
 
 type Config struct {
-	Server  ServerConfig  `json:"server"`
-	Logging LoggingConfig `json:"logging"`
+	Server   ServerConfig   `json:"server"`
+	Logging  LoggingConfig  `json:"logging"`
+	Database DatabaseConfig `json:"database"`
 }
 
 type ServerConfig struct {
 	Port           int      `json:"port"`
 	AllowedOrigins []string `json:"allowed_origins"`
+}
+
+type DatabaseConfig struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	DbName   string `json:"dbname"`
+	SslMode  string `json:"sslmode"`
 }
 
 type LoggingConfig struct {
