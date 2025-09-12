@@ -27,15 +27,17 @@ type Client struct {
 	currentChannel string
 	mu             sync.RWMutex
 	logger         *slog.Logger
+	authenticated  bool
 }
 
 func NewClient(connection *websocket.Conn, closeCh chan *Client, dispatchCh chan protocol.Message, logger *slog.Logger) *Client {
 	return &Client{
-		conn:       connection,
-		closeCh:    closeCh,
-		dispatchCh: dispatchCh,
-		send:       make(chan protocol.Message, 256),
-		logger:     logger,
+		conn:          connection,
+		closeCh:       closeCh,
+		dispatchCh:    dispatchCh,
+		send:          make(chan protocol.Message, 256),
+		logger:        logger,
+		authenticated: false,
 	}
 }
 
@@ -61,6 +63,12 @@ func (c *Client) SetUser(username string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.user = username
+}
+
+func (c *Client) SetAuthenticated(authenticated bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.authenticated = authenticated
 }
 
 func (c *Client) GetUser() string {
@@ -102,6 +110,18 @@ func (c *Client) ReadMessages() {
 			continue
 		}
 
+		if message.Type != protocol.LoginAction {
+			if !c.authenticated {
+				c.logger.Error("user not authenticated")
+				errorMsg := protocol.Message{
+					Type:    protocol.ErrorMessage,
+					Content: "You are not logged in",
+				}
+				c.send <- errorMsg
+				continue
+			}
+		}
+
 		if err := message.Validate(); err != nil {
 			c.logger.Error("message validation failed",
 				slog.Any("error", err),
@@ -114,10 +134,8 @@ func (c *Client) ReadMessages() {
 			c.send <- errorMsg
 			continue
 		}
-
-		if c.user == "" && message.User != "" {
-			c.SetUser(message.User)
-		}
+		// Always set user property in message. Not sure if by c.user or c.GetUser() with mutex
+		message.User = c.GetUser()
 
 		c.dispatchCh <- message
 	}

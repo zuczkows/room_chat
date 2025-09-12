@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"github.com/zuczkows/room-chat/internal/middleware"
 	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/user"
+	"github.com/zuczkows/room-chat/internal/utils"
 )
 
 const (
@@ -112,7 +114,56 @@ func (m *Manager) handleMessage(message protocol.Message) {
 		m.handleLeaveChannel(message)
 	case protocol.MessageActionText:
 		m.handleSendMessage(message)
+	case protocol.LoginAction:
+		m.handleLogin(message)
 	}
+}
+
+func (m *Manager) handleLogin(message protocol.Message) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.logger.Info(message.User)
+	senderClient := m.findClientByUsername(message.User)
+	if senderClient == nil {
+		m.logger.Info("Sender client is nil in handle login")
+	}
+	m.logger.Info(message.Token)
+	username, password, ok := utils.ParseBasicAuth(message.Token)
+	if !ok {
+		errorMsg := protocol.Message{
+			Type:    protocol.ErrorMessage,
+			Content: "missing or invalid credentials",
+		}
+		senderClient.Send() <- errorMsg
+		return
+	}
+	userID, err := m.userService.Login(context.Background(), username, password)
+	if err != nil {
+		errorMsg := protocol.Message{
+			Type:    protocol.ErrorMessage,
+			Content: "wrong credentials",
+		}
+		senderClient.Send() <- errorMsg
+		return
+	}
+	user, err := m.userService.GetUser(context.Background(), userID)
+	if err != nil {
+		errorMsg := protocol.Message{
+			Type:    protocol.ErrorMessage,
+			Content: err.Error(),
+		}
+		senderClient.Send() <- errorMsg
+		return
+	}
+	senderClient.SetUser(user.Nick)
+	senderClient.SetAuthenticated(true)
+	loginMsg := protocol.Message{
+		Type:    protocol.MessageActionSystem,
+		Content: fmt.Sprintf("You are logged in %s", senderClient.GetUser()),
+	}
+	senderClient.Send() <- loginMsg
+
 }
 
 func (m *Manager) handleJoinChannel(message protocol.Message) {

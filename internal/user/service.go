@@ -58,3 +58,7 @@ func (s *Service) Login(ctx context.Context, username, password string) (int64, 
 func (s *Service) UpdateProfile(ctx context.Context, userID int64, req UpdateUserRequest) (*User, error) {
 	return s.repo.Update(ctx, userID, req)
 }
+
+func (s *Service) GetUser(ctx context.Context, userID int64) (*User, error) {
+	return s.repo.GetByID(ctx, userID)
+}
