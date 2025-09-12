@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/zuczkows/room-chat/internal/protocol"
 )
@@ -20,6 +21,7 @@ const (
 
 type Client struct {
 	conn           *websocket.Conn
+	connID         string
 	closeCh        chan *Client
 	dispatchCh     chan protocol.Message
 	send           chan protocol.Message
@@ -33,12 +35,17 @@ type Client struct {
 func NewClient(connection *websocket.Conn, closeCh chan *Client, dispatchCh chan protocol.Message, logger *slog.Logger) *Client {
 	return &Client{
 		conn:          connection,
+		connID:        uuid.New().String(),
 		closeCh:       closeCh,
 		dispatchCh:    dispatchCh,
 		send:          make(chan protocol.Message, 256),
 		logger:        logger,
 		authenticated: false,
 	}
+}
+
+func (c *Client) GetID() string {
+	return c.connID
 }
 
 func (c *Client) SetCurrentChannel(channelName string) {
@@ -136,6 +143,7 @@ func (c *Client) ReadMessages() {
 		}
 		// Always set user property in message. Not sure if by c.user or c.GetUser() with mutex
 		message.User = c.GetUser()
+		message.ClientID = c.GetID()
 
 		c.dispatchCh <- message
 	}

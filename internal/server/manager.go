@@ -123,8 +123,8 @@ func (m *Manager) handleLogin(message protocol.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.logger.Info(message.User)
-	senderClient := m.findClientByUsername(message.User)
+	m.logger.Info(message.ClientID)
+	senderClient := m.findClientByID(message.ClientID)
 	if senderClient == nil {
 		m.logger.Info("Sender client is nil in handle login")
 	}
@@ -171,7 +171,7 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 	defer m.mu.Unlock()
 
 	channelName := message.Channel
-	senderClient := m.findClientByUsername(message.User)
+	senderClient := m.findClientByID(message.ClientID)
 
 	channel, exists := m.channels[channelName]
 	if exists {
@@ -210,7 +210,7 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 func (m *Manager) handleSendMessage(message protocol.Message) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	senderClient := m.findClientByUsername(message.User)
+	senderClient := m.findClientByID(message.ClientID)
 
 	channel, exists := m.channels[message.Channel]
 	if exists {
@@ -241,7 +241,7 @@ func (m *Manager) handleLeaveChannel(message protocol.Message) {
 	defer m.mu.RUnlock()
 
 	channelName := message.Channel
-	senderClient := m.findClientByUsername(message.User)
+	senderClient := m.findClientByID(message.ClientID)
 
 	channel, exists := m.channels[channelName]
 	if !exists {
@@ -333,9 +333,9 @@ func (m *Manager) removeClient(client *connection.Client) {
 	}
 }
 
-func (m *Manager) findClientByUsername(username string) *connection.Client {
+func (m *Manager) findClientByID(clientID string) *connection.Client {
 	for client := range m.clients {
-		if client.GetUser() == username {
+		if client.GetID() == clientID {
 			return client
 		}
 	}
