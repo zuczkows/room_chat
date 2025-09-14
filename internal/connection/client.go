@@ -78,6 +78,12 @@ func (c *Client) SetAuthenticated(authenticated bool) {
 	c.authenticated = authenticated
 }
 
+func (c *Client) IsAuthenticated() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.authenticated
+}
+
 func (c *Client) GetUser() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -117,16 +123,14 @@ func (c *Client) ReadMessages() {
 			continue
 		}
 
-		if message.Type != protocol.LoginAction {
-			if !c.authenticated {
-				c.logger.Error("user not authenticated")
-				errorMsg := protocol.Message{
-					Type:    protocol.ErrorMessage,
-					Content: "You are not logged in",
-				}
-				c.send <- errorMsg
-				continue
+		if message.Type != protocol.LoginAction && !c.IsAuthenticated() {
+			c.logger.Error("user not authenticated")
+			errorMsg := protocol.Message{
+				Type:    protocol.ErrorMessage,
+				Content: "You are not logged in",
 			}
+			c.send <- errorMsg
+			continue
 		}
 
 		if err := message.Validate(); err != nil {
