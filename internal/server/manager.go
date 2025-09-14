@@ -123,12 +123,12 @@ func (m *Manager) handleLogin(message protocol.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.logger.Info(message.ClientID)
 	senderClient := m.findClientByID(message.ClientID)
 	if senderClient == nil {
-		m.logger.Info("Sender client is nil in handle login")
+		m.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
+		return
 	}
-	m.logger.Info(message.Token)
+
 	username, password, ok := utils.ParseBasicAuth(message.Token)
 	if !ok {
 		errorMsg := protocol.Message{
@@ -140,6 +140,9 @@ func (m *Manager) handleLogin(message protocol.Message) {
 	}
 	userID, err := m.userService.Login(context.Background(), username, password)
 	if err != nil {
+		m.logger.Info("Login failed",
+			slog.String("username", username),
+			slog.Any("error", err))
 		errorMsg := protocol.Message{
 			Type:    protocol.ErrorMessage,
 			Content: "wrong credentials",
@@ -172,6 +175,10 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 
 	channelName := message.Channel
 	senderClient := m.findClientByID(message.ClientID)
+	if senderClient == nil {
+		m.logger.Error("Client not found for join channel", slog.String("clientID", message.ClientID))
+		return
+	}
 
 	channel, exists := m.channels[channelName]
 	if exists {
@@ -211,6 +218,10 @@ func (m *Manager) handleSendMessage(message protocol.Message) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	senderClient := m.findClientByID(message.ClientID)
+	if senderClient == nil {
+		m.logger.Error("Client not found for send message", slog.String("clientID", message.ClientID))
+		return
+	}
 
 	channel, exists := m.channels[message.Channel]
 	if exists {
@@ -242,6 +253,10 @@ func (m *Manager) handleLeaveChannel(message protocol.Message) {
 
 	channelName := message.Channel
 	senderClient := m.findClientByID(message.ClientID)
+	if senderClient == nil {
+		m.logger.Error("Client not found for leave channel", slog.String("clientID", message.ClientID))
+		return
+	}
 
 	channel, exists := m.channels[channelName]
 	if !exists {
