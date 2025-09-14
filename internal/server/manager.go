@@ -172,27 +172,28 @@ func (m *Manager) handleLeaveChannel(message protocol.Message) {
 		}
 		return
 	}
+	if senderClient != nil {
+		if channel.HasUser(senderClient) {
+			channel.RemoveClient(senderClient)
+			senderClient.ClearCurrentChannel()
 
-	if senderClient != nil && channel.HasUser(senderClient) {
-		channel.RemoveClient(senderClient)
-		senderClient.ClearCurrentChannel()
+			leaveMsg := protocol.Message{
+				Type:    protocol.MessageActionSystem,
+				Channel: channelName,
+				Content: fmt.Sprintf("%s left the channel", message.User),
+			}
+			channel.Broadcast(leaveMsg)
 
-		leaveMsg := protocol.Message{
-			Type:    protocol.MessageActionSystem,
-			Channel: channelName,
-			Content: fmt.Sprintf("%s left the channel", message.User),
+			m.logger.Info("User left channel",
+				slog.String("user", message.User),
+				slog.String("channel", channelName))
+
+			if activeUsersCount := channel.ActiveUsersCount(); activeUsersCount == 0 {
+				delete(m.channels, channelName)
+				m.logger.Info("Channel deleted", slog.String("channel", channelName))
+			}
+			return
 		}
-		channel.Broadcast(leaveMsg)
-
-		m.logger.Info("User left channel",
-			slog.String("user", message.User),
-			slog.String("channel", channelName))
-
-		if activeUsersCount := channel.ActiveUsersCount(); activeUsersCount == 0 {
-			delete(m.channels, channelName)
-			m.logger.Info("Channel deleted", slog.String("channel", channelName))
-		}
-	} else if senderClient != nil {
 		errorMsg := protocol.Message{
 			Type:    protocol.MessageActionSystem,
 			Content: fmt.Sprintf("You are not a member of channel '%s'", channelName),
