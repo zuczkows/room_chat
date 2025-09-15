@@ -154,7 +154,7 @@ func (m *Manager) handleLogin(message protocol.Message) {
 	if err != nil {
 		errorMsg := protocol.Message{
 			Type:    protocol.ErrorMessage,
-			Content: err.Error(),
+			Content: "something went wrong",
 		}
 		senderClient.Send() <- errorMsg
 		return
@@ -204,22 +204,23 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 		m.logger.Info("Created new channel", slog.String("channel", channelName))
 	}
 
-	if senderClient != nil {
-		m.logger.Info(fmt.Sprintf("User is added to channel %s", senderClient.GetUser()))
-		channel.AddClient(senderClient.GetUser(), senderClient)
-		senderClient.SetCurrentChannel(channelName)
+	m.logger.Info(fmt.Sprintf("User is added to channel %s", senderClient.GetUser()))
+	// note zuczkows - maybe it instead of adding a client to channel, I should add user with
+	// all active connection? When one user has 2 opened ws connection without channel and one ws
+	// makes join action, then the other ws should be updated ?
+	channel.AddClient(senderClient.GetUser(), senderClient)
+	senderClient.SetCurrentChannel(channelName)
 
-		userJoinedMsg := protocol.Message{
-			Type:    protocol.MessageActionSystem,
-			Channel: channelName,
-			User:    message.User,
-			Content: fmt.Sprintf("%s joined the channel", message.User),
-		}
-		channel.Broadcast(userJoinedMsg)
-		m.logger.Info("User joined channel",
-			slog.String("user", message.User),
-			slog.String("channel", channelName))
+	userJoinedMsg := protocol.Message{
+		Type:    protocol.MessageActionSystem,
+		Channel: channelName,
+		User:    message.User,
+		Content: fmt.Sprintf("%s joined the channel", message.User),
 	}
+	channel.Broadcast(userJoinedMsg)
+	m.logger.Info("User joined channel",
+		slog.String("user", message.User),
+		slog.String("channel", channelName))
 
 }
 
@@ -235,6 +236,7 @@ func (m *Manager) handleSendMessage(message protocol.Message) {
 	channel, exists := m.channels[message.Channel]
 	if exists {
 		if channel.HasUser(senderClient.GetUser()) {
+			// Note zuczkows - Maybe Broadcast should have user param in order to skip sending pushes to his own websocket
 			channel.Broadcast(message)
 			m.logger.Info("Message sent to channel",
 				slog.String("channel", message.Channel),
@@ -269,44 +271,40 @@ func (m *Manager) handleLeaveChannel(message protocol.Message) {
 
 	channel, exists := m.channels[channelName]
 	if !exists {
-		if senderClient != nil {
-			errorMsg := protocol.Message{
-				Type:    protocol.MessageActionSystem,
-				Content: fmt.Sprintf("channel %s does not exist", channelName),
-			}
-			senderClient.Send() <- errorMsg
+		errorMsg := protocol.Message{
+			Type:    protocol.MessageActionSystem,
+			Content: fmt.Sprintf("channel %s does not exist", channelName),
+		}
+		senderClient.Send() <- errorMsg
+		return
+	}
+	username := senderClient.GetUser()
+	if channel.HasUser(username) {
+		channel.RemoveClient(username, senderClient)
+		senderClient.ClearCurrentChannel()
+
+		leaveMsg := protocol.Message{
+			Type:    protocol.MessageActionSystem,
+			Channel: channelName,
+			Content: fmt.Sprintf("%s left the channel", message.User),
+		}
+		channel.Broadcast(leaveMsg)
+
+		m.logger.Info("User left channel",
+			slog.String("user", message.User),
+			slog.String("channel", channelName))
+
+		if activeUsersCount := channel.ActiveUsersCount(); activeUsersCount == 0 {
+			delete(m.channels, channelName)
+			m.logger.Info("Channel deleted", slog.String("channel", channelName))
 		}
 		return
 	}
-	if senderClient != nil {
-		username := senderClient.GetUser()
-		if channel.HasUser(username) {
-			channel.RemoveClient(username, senderClient)
-			senderClient.ClearCurrentChannel()
-
-			leaveMsg := protocol.Message{
-				Type:    protocol.MessageActionSystem,
-				Channel: channelName,
-				Content: fmt.Sprintf("%s left the channel", message.User),
-			}
-			channel.Broadcast(leaveMsg)
-
-			m.logger.Info("User left channel",
-				slog.String("user", message.User),
-				slog.String("channel", channelName))
-
-			if activeUsersCount := channel.ActiveUsersCount(); activeUsersCount == 0 {
-				delete(m.channels, channelName)
-				m.logger.Info("Channel deleted", slog.String("channel", channelName))
-			}
-			return
-		}
-		errorMsg := protocol.Message{
-			Type:    protocol.MessageActionSystem,
-			Content: fmt.Sprintf("You are not a member of channel '%s'", channelName),
-		}
-		senderClient.Send() <- errorMsg
+	errorMsg := protocol.Message{
+		Type:    protocol.MessageActionSystem,
+		Content: fmt.Sprintf("You are not a member of channel '%s'", channelName),
 	}
+	senderClient.Send() <- errorMsg
 }
 
 func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
