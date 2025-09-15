@@ -159,11 +159,19 @@ func (m *Manager) handleLogin(message protocol.Message) {
 		senderClient.Send() <- errorMsg
 		return
 	}
-	senderClient.SetUser(user.Nick)
+
+	for channelName, channel := range m.channels {
+		if channel.HasUser(username) {
+			channel.AddClient(username, senderClient)
+			senderClient.SetCurrentChannel(channelName)
+		}
+	}
+
+	senderClient.SetUser(user.Username)
 	senderClient.SetAuthenticated(true)
 	loginMsg := protocol.Message{
 		Type:    protocol.MessageActionSystem,
-		Content: fmt.Sprintf("You are logged in %s", senderClient.GetUser()),
+		Content: fmt.Sprintf("Welcome %s!", senderClient.GetUser()),
 	}
 	senderClient.Send() <- loginMsg
 
@@ -182,7 +190,7 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 
 	channel, exists := m.channels[channelName]
 	if exists {
-		if channel.HasUser(senderClient) {
+		if channel.HasUser(senderClient.GetUser()) {
 			userAlreadyInChannelMsg := protocol.Message{
 				Type:    protocol.MessageActionSystem,
 				Content: fmt.Sprintf("You are already in a channel: %s", channelName),
@@ -197,7 +205,8 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 	}
 
 	if senderClient != nil {
-		channel.AddClient(senderClient)
+		m.logger.Info(fmt.Sprintf("User is added to channel %s", senderClient.GetUser()))
+		channel.AddClient(senderClient.GetUser(), senderClient)
 		senderClient.SetCurrentChannel(channelName)
 
 		userJoinedMsg := protocol.Message{
@@ -225,7 +234,7 @@ func (m *Manager) handleSendMessage(message protocol.Message) {
 
 	channel, exists := m.channels[message.Channel]
 	if exists {
-		if channel.HasUser(senderClient) {
+		if channel.HasUser(senderClient.GetUser()) {
 			channel.Broadcast(message)
 			m.logger.Info("Message sent to channel",
 				slog.String("channel", message.Channel),
@@ -270,8 +279,9 @@ func (m *Manager) handleLeaveChannel(message protocol.Message) {
 		return
 	}
 	if senderClient != nil {
-		if channel.HasUser(senderClient) {
-			channel.RemoveClient(senderClient)
+		username := senderClient.GetUser()
+		if channel.HasUser(username) {
+			channel.RemoveClient(username, senderClient)
 			senderClient.ClearCurrentChannel()
 
 			leaveMsg := protocol.Message{
@@ -331,15 +341,17 @@ func (m *Manager) removeClient(client *connection.Client) {
 
 		if currentChannel != "" {
 			if channel, exists := m.channels[currentChannel]; exists {
-				channel.RemoveClient(client)
+				channel.RemoveClient(client.GetUser(), client)
 				userName := client.GetUser()
-				leaveMsg := protocol.Message{
-					Type:    protocol.MessageActionSystem,
-					Channel: channel.Name(),
-					User:    userName,
-					Content: fmt.Sprintf("%s left the channel", userName),
+				if !channel.HasUser(client.GetUser()) {
+					leaveMsg := protocol.Message{
+						Type:    protocol.MessageActionSystem,
+						Channel: channel.Name(),
+						User:    userName,
+						Content: fmt.Sprintf("%s left the channel", userName),
+					}
+					channel.Broadcast(leaveMsg)
 				}
-				channel.Broadcast(leaveMsg)
 			}
 		}
 
