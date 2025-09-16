@@ -360,8 +360,10 @@ func (m *Manager) removeClient(client *connection.Client) {
 }
 
 func (m *Manager) findClientByID(clientID string) *connection.Client {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	for client := range m.clients {
-		if client.GetID() == clientID {
+		if client.ConnID == clientID {
 			return client
 		}
 	}
