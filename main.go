@@ -33,7 +33,7 @@ func setupApp() {
 		Host:     cfg.Database.Host,
 		Port:     cfg.Database.Port,
 		User:     cfg.Database.User,
-		Password: cfg.Database.Password,
+		Password: cfg.Database.Password.String(),
 		DBName:   cfg.Database.DbName,
 		SSLMode:  cfg.Database.SslMode,
 	}

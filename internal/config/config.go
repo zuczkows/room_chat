@@ -2,11 +2,41 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"slices"
 	"strings"
 )
+
+const envPrefix = "#env:"
+
+type Secret string
+
+func (s *Secret) UnmarshalJSON(data []byte) error {
+	var key string
+	if err := json.Unmarshal(data, &key); err != nil {
+		return err
+	}
+
+	if !strings.HasPrefix(key, envPrefix) {
+		*s = Secret(key)
+		return nil
+	}
+
+	env := strings.TrimPrefix(key, envPrefix)
+	value, exists := os.LookupEnv(env)
+	if !exists {
+		return fmt.Errorf("env var %s doesn't exist", env)
+	}
+	*s = Secret(value)
+
+	return nil
+}
+
+func (s *Secret) String() string {
+	return string(*s)
+}
 
 type Config struct {
 	Server   ServerConfig   `json:"server"`
@@ -23,7 +53,7 @@ type DatabaseConfig struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
 	User     string `json:"user"`
-	Password string `json:"password"`
+	Password Secret `json:"password"`
 	DbName   string `json:"dbname"`
 	SslMode  string `json:"sslmode"`
 }
