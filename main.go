@@ -48,7 +48,6 @@ func setupApp() {
 
 	manager := server.NewManager(logger, cfg, userService)
 	go manager.Run()
-	mux := manager.Mount()
-	manager.StartServ(mux)
+	manager.StartServ()
 
 }

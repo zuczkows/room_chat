@@ -70,18 +70,14 @@ func NewManager(logger *slog.Logger, cfg *config.Config, userService *user.Servi
 	}
 }
 
-func (m *Manager) Mount() http.Handler {
-	r := http.NewServeMux()
+func (m *Manager) StartServ() {
+	mux := http.NewServeMux()
 	userHandler := handlers.NewUserHandler(m.userService, m.logger)
 	authMiddleware := middleware.NewAuthMiddleware(m.userService, m.logger)
 
-	r.HandleFunc("GET /ws", m.ServeWS)
-	r.HandleFunc("POST /api/register", userHandler.HandleRegister)
-	r.Handle("PUT /api/profile", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleUpdate)))
-	return r
-}
-
-func (m *Manager) StartServ(mux http.Handler) {
+	mux.HandleFunc("GET /ws", m.ServeWS)
+	mux.HandleFunc("POST /api/register", userHandler.HandleRegister)
+	mux.Handle("PUT /api/profile", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleUpdate)))
 	m.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", m.config.Server.Port),
 		Handler:      mux,
