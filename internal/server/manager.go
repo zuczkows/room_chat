@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -140,14 +141,33 @@ func (m *Manager) handleLogin(message protocol.Message) {
 	}
 	userID, err := m.userService.Login(context.Background(), username, password)
 	if err != nil {
-		m.logger.Info("Login failed",
-			slog.String("username", username),
-			slog.Any("error", err))
-		errorMsg := protocol.Message{
-			Type:    protocol.ErrorMessage,
-			Content: "wrong credentials",
+		switch {
+		case errors.Is(err, user.ErrUserNotFound):
+			m.logger.Info("login attempt with wrong username",
+				slog.String("username", username))
+			errorMsg := protocol.Message{
+				Type:    protocol.ErrorMessage,
+				Content: "invalid username or password",
+			}
+			senderClient.Send() <- errorMsg
+		case errors.Is(err, user.ErrInvalidPassword):
+			m.logger.Info("login attempt with wrong password",
+				slog.String("username", username))
+			errorMsg := protocol.Message{
+				Type:    protocol.ErrorMessage,
+				Content: "invalid username or password",
+			}
+			senderClient.Send() <- errorMsg
+		default:
+			m.logger.Error("login internal service error",
+				slog.String("username", username),
+				slog.Any("error", err))
+			errorMsg := protocol.Message{
+				Type:    protocol.ErrorMessage,
+				Content: "internal server error",
+			}
+			senderClient.Send() <- errorMsg
 		}
-		senderClient.Send() <- errorMsg
 		return
 	}
 	user, err := m.userService.GetUser(context.Background(), userID)

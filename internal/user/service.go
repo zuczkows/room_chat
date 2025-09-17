@@ -23,8 +23,11 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) Register(ctx context.Context, req CreateUserRequest) (*User, error) {
-	existing, _ := s.repo.GetByUsername(ctx, req.Username)
-	if existing != nil {
+	user, err := s.repo.GetByUsername(ctx, req.Username)
+	if err != nil {
+		return nil, err
+	}
+	if user != nil {
 		return nil, ErrUserAlreadyExists
 	}
 
