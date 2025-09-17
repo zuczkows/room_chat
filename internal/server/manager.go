@@ -191,9 +191,20 @@ func (m *Manager) handleLogin(message protocol.Message) {
 
 }
 
+func (m *Manager) getAllClientsForUser(username string) []*connection.Client {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var userClients []*connection.Client
+	for _, client := range m.clients {
+		if client.IsAuthenticated() && client.GetUser() == username {
+			userClients = append(userClients, client)
+		}
+	}
+	return userClients
+}
+
 func (m *Manager) handleJoinChannel(message protocol.Message) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	channelName := message.Channel
 	senderClient, exists := m.clients[message.ClientID]
@@ -202,9 +213,11 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 		return
 	}
 
+	username := senderClient.GetUser()
+
 	channel, exists := m.channels[channelName]
 	if exists {
-		if channel.HasUser(senderClient.GetUser()) {
+		if channel.HasUser(username) {
 			userAlreadyInChannelMsg := protocol.Message{
 				Type:    protocol.MessageActionSystem,
 				Content: fmt.Sprintf("You are already in a channel: %s", channelName),
@@ -217,15 +230,17 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 		channel = m.channels[channelName]
 		m.logger.Info("Created new channel", slog.String("channel", channelName))
 	}
+	m.mu.Unlock()
 
-	// note zuczkows - maybe it instead of adding a client to channel, I should add user with
-	// all active connection? When one user has 2 opened ws connection without channel and one ws
-	// makes join action, then the other ws should be updated ?
-	channel.AddClient(senderClient.GetUser(), senderClient)
+	userClients := m.getAllClientsForUser(username)
+	for _, client := range userClients {
+		channel.AddClient(username, client)
+	}
 
 	m.logger.Info("User joined channel",
 		slog.String("user", message.User),
-		slog.String("channel", channelName))
+		slog.String("channel", channelName),
+		slog.Int("connections", len(userClients)))
 
 }
 
