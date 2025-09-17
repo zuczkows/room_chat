@@ -160,10 +160,9 @@ func (m *Manager) handleLogin(message protocol.Message) {
 		return
 	}
 
-	for channelName, channel := range m.channels {
+	for _, channel := range m.channels {
 		if channel.HasUser(username) {
 			channel.AddClient(username, senderClient)
-			senderClient.SetCurrentChannel(channelName)
 		}
 	}
 
@@ -199,25 +198,16 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 			return
 		}
 	} else {
-		m.channels[channelName] = chat.NewChannel(channelName)
+		m.channels[channelName] = chat.NewChannel(channelName, m.logger)
 		channel = m.channels[channelName]
 		m.logger.Info("Created new channel", slog.String("channel", channelName))
 	}
 
-	m.logger.Info(fmt.Sprintf("User is added to channel %s", senderClient.GetUser()))
 	// note zuczkows - maybe it instead of adding a client to channel, I should add user with
 	// all active connection? When one user has 2 opened ws connection without channel and one ws
 	// makes join action, then the other ws should be updated ?
 	channel.AddClient(senderClient.GetUser(), senderClient)
-	senderClient.SetCurrentChannel(channelName)
 
-	userJoinedMsg := protocol.Message{
-		Type:    protocol.MessageActionSystem,
-		Channel: channelName,
-		User:    message.User,
-		Content: fmt.Sprintf("%s joined the channel", message.User),
-	}
-	channel.Broadcast(userJoinedMsg)
 	m.logger.Info("User joined channel",
 		slog.String("user", message.User),
 		slog.String("channel", channelName))
@@ -281,18 +271,6 @@ func (m *Manager) handleLeaveChannel(message protocol.Message) {
 	username := senderClient.GetUser()
 	if channel.HasUser(username) {
 		channel.RemoveClient(username, senderClient)
-		senderClient.ClearCurrentChannel()
-
-		leaveMsg := protocol.Message{
-			Type:    protocol.MessageActionSystem,
-			Channel: channelName,
-			Content: fmt.Sprintf("%s left the channel", message.User),
-		}
-		channel.Broadcast(leaveMsg)
-
-		m.logger.Info("User left channel",
-			slog.String("user", message.User),
-			slog.String("channel", channelName))
 
 		if activeUsersCount := channel.ActiveUsersCount(); activeUsersCount == 0 {
 			delete(m.channels, channelName)
@@ -334,34 +312,20 @@ func (m *Manager) removeClient(client *connection.Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, exists := m.clients[client]
+	userName := client.GetUser()
 	if exists {
-		currentChannel := client.GetCurrentChannel()
-
-		if currentChannel != "" {
-			if channel, exists := m.channels[currentChannel]; exists {
-				channel.RemoveClient(client.GetUser(), client)
-				userName := client.GetUser()
-				if !channel.HasUser(client.GetUser()) {
-					leaveMsg := protocol.Message{
-						Type:    protocol.MessageActionSystem,
-						Channel: channel.Name(),
-						User:    userName,
-						Content: fmt.Sprintf("%s left the channel", userName),
-					}
-					channel.Broadcast(leaveMsg)
-				}
+		for _, channel := range m.channels {
+			if channel.HasUser(userName) {
+				channel.RemoveClient(userName, client)
 			}
 		}
-
 		delete(m.clients, client)
 		close(client.Send())
-		m.logger.Info("Client unregistered")
+		m.logger.Info("Client unregistered", slog.String("user", userName))
 	}
 }
 
 func (m *Manager) findClientByID(clientID string) *connection.Client {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	for client := range m.clients {
 		if client.ConnID == clientID {
 			return client

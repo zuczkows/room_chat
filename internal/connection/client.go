@@ -20,16 +20,15 @@ const (
 )
 
 type Client struct {
-	conn           *websocket.Conn
-	ConnID         string
-	closeCh        chan<- *Client
-	dispatchCh     chan<- protocol.Message
-	send           chan protocol.Message
-	user           string
-	currentChannel string
-	mu             sync.RWMutex
-	logger         *slog.Logger
-	authenticated  bool
+	conn          *websocket.Conn
+	ConnID        string
+	closeCh       chan<- *Client
+	dispatchCh    chan<- protocol.Message
+	send          chan protocol.Message
+	user          string
+	mu            sync.RWMutex
+	logger        *slog.Logger
+	authenticated bool
 }
 
 func NewClient(connection *websocket.Conn, closeCh chan<- *Client, dispatchCh chan<- protocol.Message, logger *slog.Logger) *Client {
@@ -42,24 +41,6 @@ func NewClient(connection *websocket.Conn, closeCh chan<- *Client, dispatchCh ch
 		logger:        logger,
 		authenticated: false,
 	}
-}
-
-func (c *Client) SetCurrentChannel(channelName string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.currentChannel = channelName
-}
-
-func (c *Client) GetCurrentChannel() string {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.currentChannel
-}
-
-func (c *Client) ClearCurrentChannel() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.currentChannel = ""
 }
 
 func (c *Client) SetUser(username string) {
@@ -199,15 +180,10 @@ func (c *Client) WriteMessages() {
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
-			c.logger.Debug("Heartbeat ping sent",
-				slog.String("user", c.GetUser()),
-				slog.String("channel", c.GetCurrentChannel())) // debug print to check heartbeating
 		}
 	}
 }
 
 func (c *Client) pongHandler(pongMsg string) error {
-	c.logger.Debug("Heartbeat pong received",
-		slog.String("user", c.GetUser())) // debug print to check heartbeating
 	return c.conn.SetReadDeadline(time.Now().Add(PongWait))
 }
