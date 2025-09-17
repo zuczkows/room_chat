@@ -40,12 +40,12 @@ func createOriginChecker(cfg *config.Config) func(*http.Request) bool {
 	}
 }
 
-type ChannelList map[string]*chat.Channel
-type ClientList map[string]*connection.Client
+type Channels map[string]*chat.Channel
+type Clients map[string]*connection.Client
 
 type Manager struct {
-	channels        ChannelList
-	clients         ClientList
+	channels        Channels
+	clients         Clients
 	register        chan *connection.Client
 	unregister      chan *connection.Client
 	dispatchMessage chan protocol.Message
@@ -59,7 +59,7 @@ type Manager struct {
 func NewManager(logger *slog.Logger, cfg *config.Config, userService *user.Service) *Manager {
 	return &Manager{
 		channels:        make(map[string]*chat.Channel),
-		clients:         make(ClientList),
+		clients:         make(Clients),
 		register:        make(chan *connection.Client),
 		unregister:      make(chan *connection.Client),
 		dispatchMessage: make(chan protocol.Message),
