@@ -29,6 +29,7 @@ type Client struct {
 	mu            sync.RWMutex
 	logger        *slog.Logger
 	authenticated bool
+	authOnce      sync.Once
 }
 
 func NewClient(connection *websocket.Conn, closeCh chan<- *Client, dispatchCh chan<- protocol.Message, logger *slog.Logger) *Client {
@@ -43,16 +44,11 @@ func NewClient(connection *websocket.Conn, closeCh chan<- *Client, dispatchCh ch
 	}
 }
 
-func (c *Client) SetUser(username string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.user = username
-}
-
-func (c *Client) SetAuthenticated(authenticated bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.authenticated = authenticated
+func (c *Client) Authenticate(username string) {
+	c.authOnce.Do(func() {
+		c.user = username
+		c.authenticated = true
+	})
 }
 
 func (c *Client) IsAuthenticated() bool {
@@ -122,7 +118,6 @@ func (c *Client) ReadMessages() {
 			c.send <- errorMsg
 			continue
 		}
-		// Always set user property in message. Not sure if by c.user or c.GetUser() with mutex
 		message.User = c.GetUser()
 		message.ClientID = c.ConnID
 

@@ -166,8 +166,7 @@ func (m *Manager) handleLogin(message protocol.Message) {
 		}
 	}
 
-	senderClient.SetUser(user.Username)
-	senderClient.SetAuthenticated(true)
+	senderClient.Authenticate(user.Username)
 	loginMsg := protocol.Message{
 		Type:    protocol.MessageActionSystem,
 		Content: fmt.Sprintf("Welcome %s!", senderClient.GetUser()),
