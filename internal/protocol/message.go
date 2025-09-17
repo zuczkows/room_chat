@@ -23,7 +23,7 @@ type Message struct {
 	Channel  string        `json:"channel,omitempty" validate:"min=1,max=50"`
 	User     string        `json:"user,omitempty"`
 	Content  string        `json:"content" validate:"max=500"`
-	Token    string        `json:"token"`
+	Token    string        `json:"token,omitempty"`
 }
 
 // note from zuczkows - I think I should manually check struct and return nice
