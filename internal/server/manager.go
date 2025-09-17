@@ -41,7 +41,7 @@ func createOriginChecker(cfg *config.Config) func(*http.Request) bool {
 }
 
 type ChannelList map[string]*chat.Channel
-type ClientList map[*connection.Client]bool
+type ClientList map[string]*connection.Client
 
 type Manager struct {
 	channels        ChannelList
@@ -123,8 +123,8 @@ func (m *Manager) handleLogin(message protocol.Message) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	senderClient := m.findClientByID(message.ClientID)
-	if senderClient == nil {
+	senderClient, exists := m.clients[message.ClientID]
+	if !exists {
 		m.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
 		return
 	}
@@ -181,8 +181,8 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 	defer m.mu.Unlock()
 
 	channelName := message.Channel
-	senderClient := m.findClientByID(message.ClientID)
-	if senderClient == nil {
+	senderClient, exists := m.clients[message.ClientID]
+	if !exists {
 		m.logger.Error("Client not found for join channel", slog.String("clientID", message.ClientID))
 		return
 	}
@@ -217,8 +217,8 @@ func (m *Manager) handleJoinChannel(message protocol.Message) {
 func (m *Manager) handleSendMessage(message protocol.Message) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	senderClient := m.findClientByID(message.ClientID)
-	if senderClient == nil {
+	senderClient, exists := m.clients[message.ClientID]
+	if !exists {
 		m.logger.Error("Client not found for send message", slog.String("clientID", message.ClientID))
 		return
 	}
@@ -253,8 +253,8 @@ func (m *Manager) handleLeaveChannel(message protocol.Message) {
 	defer m.mu.RUnlock()
 
 	channelName := message.Channel
-	senderClient := m.findClientByID(message.ClientID)
-	if senderClient == nil {
+	senderClient, exists := m.clients[message.ClientID]
+	if !exists {
 		m.logger.Error("Client not found for leave channel", slog.String("clientID", message.ClientID))
 		return
 	}
@@ -304,14 +304,14 @@ func (m *Manager) ServeWS(w http.ResponseWriter, r *http.Request) {
 func (m *Manager) addClient(client *connection.Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.clients[client] = true
+	m.clients[client.ConnID] = client
 	m.logger.Info("Client added", slog.Int("total_clients", len(m.clients)))
 }
 
 func (m *Manager) removeClient(client *connection.Client) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, exists := m.clients[client]
+	_, exists := m.clients[client.ConnID]
 	userName := client.GetUser()
 	if exists {
 		for _, channel := range m.channels {
@@ -319,17 +319,8 @@ func (m *Manager) removeClient(client *connection.Client) {
 				channel.RemoveClient(userName, client)
 			}
 		}
-		delete(m.clients, client)
+		delete(m.clients, client.ConnID)
 		close(client.Send())
 		m.logger.Info("Client unregistered", slog.String("user", userName))
 	}
-}
-
-func (m *Manager) findClientByID(clientID string) *connection.Client {
-	for client := range m.clients {
-		if client.ConnID == clientID {
-			return client
-		}
-	}
-	return nil
 }
