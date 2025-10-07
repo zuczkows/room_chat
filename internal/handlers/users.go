@@ -32,7 +32,7 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	user, err := u.userService.Register(r.Context(), req)
 	if err != nil {
 		u.logger.Error("Registration failed", slog.Any("error", err))
-		http.Error(w, "Registration failed", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os"
 
-	_ "github.com/lib/pq"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/database"
 	"github.com/zuczkows/room-chat/internal/server"

@@ -23,14 +23,6 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) Register(ctx context.Context, req CreateUserRequest) (*User, error) {
-	user, err := s.repo.GetByUsername(ctx, req.Username)
-	if err != nil {
-		return nil, err
-	}
-	if user != nil {
-		return nil, ErrUserAlreadyExists
-	}
-
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
