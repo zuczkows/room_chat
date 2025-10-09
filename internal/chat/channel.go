@@ -1,8 +1,14 @@
 package chat
 
 import (
+	"errors"
 	"log/slog"
 	"sync"
+)
+
+var (
+	ErrUserAlreadyExists = errors.New("user already exists")
+	ErrNotAMember        = errors.New("user is not a member of a channel")
 )
 
 type Channel struct {
@@ -24,33 +30,33 @@ func (ch *Channel) Name() string {
 	return ch.name
 }
 
-func (ch *Channel) AddUser(username string) bool {
+func (ch *Channel) AddUser(username string) error {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
 
 	if _, exists := ch.users[username]; exists {
-		return false
+		return ErrUserAlreadyExists
 	}
 	ch.users[username] = struct{}{}
 	ch.logger.Info("User joined channel",
 		slog.String("user", username),
 		slog.String("channel", ch.name))
-	return true
+	return nil
 }
 
-func (ch *Channel) RemoveUser(username string) bool {
+func (ch *Channel) RemoveUser(username string) error {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
 
 	if _, exists := ch.users[username]; !exists {
-		return false
+		return ErrNotAMember
 	}
 
 	delete(ch.users, username)
 	ch.logger.Info("User left channel",
 		slog.String("user", username),
 		slog.String("channel", ch.name))
-	return true
+	return nil
 }
 
 func (ch *Channel) HasUser(username string) bool {
