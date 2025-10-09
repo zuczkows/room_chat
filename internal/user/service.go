@@ -22,7 +22,7 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) Register(ctx context.Context, req CreateUserRequest) (*User, error) {
+func (s *Service) Register(ctx context.Context, req CreateUserRequest) (*Profile, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -50,10 +50,10 @@ func (s *Service) Login(ctx context.Context, username, password string) (int64, 
 	return user.ID, nil
 }
 
-func (s *Service) UpdateProfile(ctx context.Context, userID int64, req UpdateUserRequest) (*User, error) {
+func (s *Service) UpdateProfile(ctx context.Context, userID int64, req UpdateUserRequest) (*Profile, error) {
 	return s.repo.Update(ctx, userID, req)
 }
 
-func (s *Service) GetUser(ctx context.Context, userID int64) (*User, error) {
+func (s *Service) GetProfile(ctx context.Context, userID int64) (*Profile, error) {
 	return s.repo.GetByID(ctx, userID)
 }

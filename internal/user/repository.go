@@ -11,10 +11,10 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, req CreateUserRequest) (*User, error)
-	Update(ctx context.Context, id int64, req UpdateUserRequest) (*User, error)
-	GetByID(ctx context.Context, id int64) (*User, error)
-	GetByUsername(ctx context.Context, username string) (*User, error)
+	Create(ctx context.Context, req CreateUserRequest) (*Profile, error)
+	Update(ctx context.Context, id int64, req UpdateUserRequest) (*Profile, error)
+	GetByID(ctx context.Context, id int64) (*Profile, error)
+	GetByUsername(ctx context.Context, username string) (*Profile, error)
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -26,14 +26,14 @@ func NewPostgresRepository(db *sql.DB) Repository {
 	return &PostgresRepository{db: db}
 }
 
-func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) (*User, error) {
+func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) (*Profile, error) {
 	query := `
         INSERT INTO users (username, password_hash, nick, created_at, updated_at)
         VALUES ($1, $2, $3, NOW(), NOW())
         RETURNING id, username, nick, created_at, updated_at`
-	user := User{}
+	profile := Profile{}
 	err := r.db.QueryRowContext(ctx, query, req.Username, req.Password, req.Nick).
-		Scan(&user.ID, &user.Username, &user.Nick, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&profile.ID, &profile.Username, &profile.Nick, &profile.CreatedAt, &profile.UpdatedAt)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
@@ -49,20 +49,20 @@ func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) 
 		return nil, err
 	}
 
-	return &user, nil
+	return &profile, nil
 
 }
 
-func (r *PostgresRepository) Update(ctx context.Context, id int64, req UpdateUserRequest) (*User, error) {
+func (r *PostgresRepository) Update(ctx context.Context, id int64, req UpdateUserRequest) (*Profile, error) {
 	query := `
         UPDATE users
         SET nick = $1, updated_at = NOW()
         WHERE id = $2
         RETURNING id, username, nick, created_at, updated_at`
 
-	user := &User{}
+	profile := Profile{}
 	err := r.db.QueryRowContext(ctx, query, req.Nick, id).
-		Scan(&user.ID, &user.Username, &user.Nick, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&profile.ID, &profile.Username, &profile.Nick, &profile.CreatedAt, &profile.UpdatedAt)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -79,18 +79,18 @@ func (r *PostgresRepository) Update(ctx context.Context, id int64, req UpdateUse
 		}
 		return nil, err
 	}
-	return user, nil
+	return &profile, nil
 }
 
-func (r *PostgresRepository) GetByID(ctx context.Context, id int64) (*User, error) {
+func (r *PostgresRepository) GetByID(ctx context.Context, id int64) (*Profile, error) {
 	query := `SELECT id, username, nick, created_at, updated_at FROM users WHERE id = $1`
-	user := &User{}
+	profile := Profile{}
 	err := r.db.QueryRowContext(ctx, query, id).
-		Scan(&user.ID, &user.Username, &user.Nick, &user.CreatedAt, &user.UpdatedAt)
+		Scan(&profile.ID, &profile.Username, &profile.Nick, &profile.CreatedAt, &profile.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
-	return user, nil
+	return &profile, nil
 }
 
 func (r *PostgresRepository) Delete(ctx context.Context, id int64) error {
@@ -99,10 +99,10 @@ func (r *PostgresRepository) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
-func (r *PostgresRepository) GetByUsername(ctx context.Context, username string) (*User, error) {
+func (r *PostgresRepository) GetByUsername(ctx context.Context, username string) (*Profile, error) {
 	query := `SELECT id, username, nick, created_at, updated_at, password_hash FROM users WHERE username = $1`
-	user := &User{}
-	err := r.db.QueryRowContext(ctx, query, username).Scan(&user.ID, &user.Username, &user.Nick, &user.CreatedAt, &user.UpdatedAt, &user.Password)
+	profile := Profile{}
+	err := r.db.QueryRowContext(ctx, query, username).Scan(&profile.ID, &profile.Username, &profile.Nick, &profile.CreatedAt, &profile.UpdatedAt, &profile.Password)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("user not found")
@@ -114,5 +114,5 @@ func (r *PostgresRepository) GetByUsername(ctx context.Context, username string)
 		}
 		return nil, err
 	}
-	return user, nil
+	return &profile, nil
 }

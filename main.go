@@ -46,8 +46,8 @@ func setupApp() {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 
-	manager := server.NewManager(logger, cfg, userService)
-	go manager.Run()
-	manager.StartServ()
+	server := server.NewServer(logger, cfg, userService)
+	go server.Run()
+	server.StartServ()
 
 }
