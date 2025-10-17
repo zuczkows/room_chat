@@ -11,6 +11,7 @@ import (
 type User struct {
 	profile     *Profile
 	connections map[*connection.Client]struct{}
+	channels    map[string]struct{}
 	mu          sync.RWMutex
 	logger      *slog.Logger
 }
@@ -19,6 +20,7 @@ func NewUser(profile *Profile, logger *slog.Logger) *User {
 	return &User{
 		profile:     profile,
 		connections: make(map[*connection.Client]struct{}),
+		channels:    make(map[string]struct{}),
 		logger:      logger,
 	}
 }
@@ -33,9 +35,7 @@ func (u *User) AddConnection(client *connection.Client) {
 
 	u.connections[client] = struct{}{}
 
-	u.logger.Debug("Connection added to user",
-		slog.String("user", u.Username()),
-		slog.Int("total_connections", len(u.connections)))
+	u.logger.Debug("Connection added to user", slog.String("user", u.Username()), slog.Int("total_connections", len(u.connections)))
 }
 
 func (u *User) RemoveConnection(client *connection.Client) {
@@ -44,26 +44,42 @@ func (u *User) RemoveConnection(client *connection.Client) {
 
 	if _, exists := u.connections[client]; exists {
 		delete(u.connections, client)
-		u.logger.Debug("Connection removed from user",
-			slog.String("User", u.Username()),
-			slog.Int("total_connections", len(u.connections)))
+		u.logger.Debug("Connection removed from user", slog.String("User", u.Username()), slog.Int("total_connections", len(u.connections)))
 	}
+}
+
+func (u *User) AddChannel(channelName string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.channels[channelName] = struct{}{}
+}
+
+func (u *User) RemoveChannel(channelName string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	delete(u.channels, channelName)
+}
+
+func (u *User) GetChannels() []string {
+	u.mu.RLock()
+	defer u.mu.RUnlock()
+
+	channelNames := make([]string, 0, len(u.channels))
+	for name := range u.channels {
+		channelNames = append(channelNames, name)
+	}
+	return channelNames
 }
 
 func (u *User) SendEvent(message protocol.Message) {
 	u.mu.RLock()
-	connectionsCopy := make([]*connection.Client, 0, len(u.connections))
-	for conn := range u.connections {
-		connectionsCopy = append(connectionsCopy, conn)
-	}
-	u.mu.RUnlock()
+	defer u.mu.RUnlock()
 
-	for _, conn := range connectionsCopy {
+	for conn := range u.connections {
 		select {
 		case conn.Send() <- message:
 		default:
-			u.logger.Warn("Failed to send event to user connection",
-				slog.String("user", u.Username()))
+			u.logger.Warn("Failed to send event to user connection", slog.String("user", u.Username()))
 		}
 	}
 }

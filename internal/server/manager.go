@@ -170,9 +170,9 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	senderClient, exists := s.clients[message.ClientID]
 	if !exists {
+		s.mu.Unlock()
 		s.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
 		return
 	}
@@ -185,6 +185,7 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 
 	err := channel.AddUser(user.Username())
 	if err != nil {
+		s.mu.Unlock()
 		switch {
 		case errors.Is(err, chat.ErrUserAlreadyExists):
 			s.sendMessageToClient(senderClient, protocol.ErrorMessage, "You are already in this channel")
@@ -194,6 +195,9 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		}
 		return
 	}
+
+	user.AddChannel(message.Channel)
+	s.mu.Unlock()
 	joinMsg := protocol.Message{
 		Type:    protocol.MessageActionSystem,
 		Channel: message.Channel,
@@ -284,6 +288,12 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 			s.logger.Error("unexpected error while removing member", slog.String("user", username), slog.Any("error", err))
 		}
 	}
+
+	if user, exists := s.userManager.GetUser(username); exists {
+		user.RemoveChannel(channelName)
+	} else {
+		s.logger.Warn("authorized user does not exists in userManager", slog.String("user", username))
+	}
 	leaveMsg := protocol.Message{
 		Type:    protocol.MessageActionSystem,
 		Channel: channelName,
@@ -333,9 +343,11 @@ func (s *Server) removeClient(client *connection.Client) {
 	}
 	s.mu.Unlock()
 
+	user, exists := s.userManager.GetUser(userName)
 	s.userManager.RemoveConnectionFromUser(userName, client)
-	if user, exists := s.userManager.GetUser(userName); !exists || !user.HasConnections() {
-		s.removeUserFromAllChannels(userName)
+
+	if exists && !user.HasConnections() {
+		s.removeUserFromAllChannels(user)
 	}
 
 	s.logger.Info("Client unregistered", slog.String("user", userName))
@@ -349,35 +361,50 @@ func (s *Server) sendMessageToClient(client *connection.Client, messageAction pr
 	client.Send() <- msg
 }
 
-func (s *Server) removeUserFromAllChannels(userName string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *Server) removeUserFromAllChannels(user *user.User) {
+	channelNames := user.GetChannels()
+	userName := user.Username()
 
-	for channelName, channel := range s.channels {
-		if !channel.HasUser(userName) {
+	for _, channelName := range channelNames {
+		s.mu.RLock()
+		channel, exists := s.channels[channelName]
+		s.mu.RUnlock()
+
+		if !exists {
+			s.logger.Warn("lost synchronization - user belongs to non existing channel", slog.String("username", userName), slog.String("channel", channelName))
+			user.RemoveChannel(channelName)
 			continue
 		}
 		if err := channel.RemoveUser(userName); err != nil {
 			switch {
 			case errors.Is(err, chat.ErrNotAMember):
 				s.logger.Error("trying to remove non member from a channel", slog.String("user", userName), slog.String("channel", channelName))
-				return
+				continue
 			default:
 				s.logger.Error("unexpected error while removing member", slog.String("user", userName), slog.Any("error", err))
+				continue
 			}
 		}
+		user.RemoveChannel(channelName)
 		leaveMsg := protocol.Message{
 			Type:    protocol.MessageActionSystem,
 			Channel: channelName,
 			Content: fmt.Sprintf("%s left the channel", userName),
 		}
-		s.mu.Unlock()
 		s.broadcastToChannel(channelName, leaveMsg)
-		s.mu.Lock()
 
+		s.cleanupEmptyChannel(channelName, channel)
+
+	}
+}
+
+func (s *Server) cleanupEmptyChannel(channelName string, channel *chat.Channel) {
+	if channel.ActiveUsersCount() == 0 {
+		s.mu.Lock()
 		if channel.ActiveUsersCount() == 0 {
 			delete(s.channels, channelName)
 			s.logger.Info("Channel deleted", slog.String("channel", channelName))
 		}
+		s.mu.Unlock()
 	}
 }
