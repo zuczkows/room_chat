@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -29,16 +30,23 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := u.userService.Register(r.Context(), req)
+	userProfile, err := u.userService.Register(r.Context(), req)
 	if err != nil {
 		u.logger.Error("Registration failed", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		switch {
+		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
+			http.Error(w, user.ErrUserOrNickAlreadyExists.Error(), http.StatusConflict)
+		case errors.Is(err, user.ErrMissingRequiredFields):
+			http.Error(w, user.ErrMissingRequiredFields.Error(), http.StatusUnprocessableEntity)
+		default:
+			http.Error(w, user.ErrInternalServer.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(userProfile)
 }
 
 func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +67,12 @@ func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	updatedUser, err := u.userService.UpdateProfile(r.Context(), authenticatedUserID, req)
 	if err != nil {
 		u.logger.Error("Profile update failed", slog.Any("error", err))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		switch {
+		case errors.Is(err, user.ErrNickAlreadyExists):
+			http.Error(w, user.ErrNickAlreadyExists.Error(), http.StatusConflict)
+		default:
+			http.Error(w, user.ErrInternalServer.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 

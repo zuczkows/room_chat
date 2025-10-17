@@ -3,7 +3,6 @@ package user
 import (
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/zuczkows/room-chat/internal/connection"
 	"github.com/zuczkows/room-chat/internal/protocol"
@@ -24,36 +23,8 @@ func NewUser(profile *Profile, logger *slog.Logger) *User {
 	}
 }
 
-func (u *User) ID() int64 {
-	if u.profile == nil {
-		return 0
-	}
-	return u.profile.ID
-}
-
 func (u *User) Username() string {
-	if u.profile == nil {
-		return ""
-	}
 	return u.profile.Username
-}
-
-func (u *User) Nick() string {
-	if u.profile == nil {
-		return ""
-	}
-	return u.profile.Nick
-}
-
-func (u *User) GetProfile() *Profile {
-	return u.profile
-}
-
-func (u *User) UpdateNick(nick string) {
-	if u.profile != nil {
-		u.profile.Nick = nick
-		u.profile.UpdatedAt = time.Now()
-	}
 }
 
 func (u *User) AddConnection(client *connection.Client) {

@@ -3,15 +3,8 @@ package user
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"golang.org/x/crypto/bcrypt"
-)
-
-var (
-	ErrUserNotFound      = errors.New("user not found")
-	ErrUserAlreadyExists = errors.New("user already exists")
-	ErrInvalidPassword   = errors.New("invalid password")
 )
 
 type Service struct {
@@ -35,15 +28,16 @@ func (s *Service) Register(ctx context.Context, req CreateUserRequest) (*Profile
 func (s *Service) Login(ctx context.Context, username, password string) (int64, error) {
 	user, err := s.repo.GetByUsername(ctx, username)
 	if err != nil {
-		return 0, err
-	}
-	if user == nil {
-		return 0, ErrUserNotFound
+		switch {
+		case errors.Is(err, ErrUserNotFound):
+			return 0, ErrUserNotFound
+		default:
+			return 0, ErrInternalServer
+		}
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		fmt.Println(err)
 		return 0, ErrInvalidPassword
 	}
 

@@ -38,9 +38,7 @@ func (ch *Channel) AddUser(username string) error {
 		return ErrUserAlreadyExists
 	}
 	ch.users[username] = struct{}{}
-	ch.logger.Info("User joined channel",
-		slog.String("user", username),
-		slog.String("channel", ch.name))
+	ch.logger.Info("User joined channel", slog.String("user", username), slog.String("channel", ch.name))
 	return nil
 }
 
@@ -53,9 +51,7 @@ func (ch *Channel) RemoveUser(username string) error {
 	}
 
 	delete(ch.users, username)
-	ch.logger.Info("User left channel",
-		slog.String("user", username),
-		slog.String("channel", ch.name))
+	ch.logger.Info("User left channel", slog.String("user", username), slog.String("channel", ch.name))
 	return nil
 }
 
@@ -66,7 +62,7 @@ func (ch *Channel) HasUser(username string) bool {
 	return exists
 }
 
-func (ch *Channel) GetUsers() []string {
+func (ch *Channel) GetUsernames() []string {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
 

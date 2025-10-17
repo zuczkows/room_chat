@@ -10,6 +10,16 @@ import (
 	"github.com/zuczkows/room-chat/internal/database"
 )
 
+var (
+	ErrUserNotFound            = errors.New("user not found")
+	ErrNickAlreadyExists       = errors.New("nick already exists")
+	ErrUserAlreadyExists       = errors.New("user already exists")
+	ErrUserOrNickAlreadyExists = errors.New("user or nick already exists")
+	ErrInvalidPassword         = errors.New("invalid password")
+	ErrInternalServer          = errors.New("internal server error")
+	ErrMissingRequiredFields   = errors.New("required fields are missing")
+)
+
 type Repository interface {
 	Create(ctx context.Context, req CreateUserRequest) (*Profile, error)
 	Update(ctx context.Context, id int64, req UpdateUserRequest) (*Profile, error)
@@ -39,11 +49,11 @@ func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) 
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case database.UniqueViolation:
-				return nil, errors.New("username or nick already exists")
+				return nil, ErrUserOrNickAlreadyExists
 			case database.NotNullViolation:
-				return nil, errors.New("required field is missing")
+				return nil, ErrMissingRequiredFields
 			default:
-				return nil, fmt.Errorf("database error: %s", pgErr.Message)
+				return nil, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
 			}
 		}
 		return nil, err
@@ -66,15 +76,15 @@ func (r *PostgresRepository) Update(ctx context.Context, id int64, req UpdateUse
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.New("user not found")
+			return nil, ErrUserNotFound
 		}
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case database.UniqueViolation:
-				return nil, errors.New("nick already exists")
+				return nil, ErrNickAlreadyExists
 			default:
-				return nil, fmt.Errorf("database error: %s", pgErr.Message)
+				return nil, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
 			}
 		}
 		return nil, err
@@ -105,12 +115,12 @@ func (r *PostgresRepository) GetByUsername(ctx context.Context, username string)
 	err := r.db.QueryRowContext(ctx, query, username).Scan(&profile.ID, &profile.Username, &profile.Nick, &profile.CreatedAt, &profile.UpdatedAt, &profile.Password)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.New("user not found")
+			return nil, ErrUserNotFound
 		}
 
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
-			return nil, fmt.Errorf("database error code: %s message: %s", pgErr.Code, pgErr.Message)
+			return nil, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
 		}
 		return nil, err
 	}
