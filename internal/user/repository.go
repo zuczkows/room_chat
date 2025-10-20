@@ -87,7 +87,6 @@ func (r *PostgresRepository) Update(ctx context.Context, id int64, req UpdateUse
 				return nil, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
 			}
 		}
-		return nil, err
 	}
 	return &profile, nil
 }

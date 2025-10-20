@@ -362,10 +362,9 @@ func (s *Server) sendMessageToClient(client *connection.Client, messageAction pr
 }
 
 func (s *Server) removeUserFromAllChannels(user *user.User) {
-	channelNames := user.GetChannels()
 	userName := user.Username()
 
-	for _, channelName := range channelNames {
+	for _, channelName := range user.GetChannels() {
 		s.mu.RLock()
 		channel, exists := s.channels[channelName]
 		s.mu.RUnlock()
@@ -378,12 +377,11 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 		if err := channel.RemoveUser(userName); err != nil {
 			switch {
 			case errors.Is(err, chat.ErrNotAMember):
-				s.logger.Error("trying to remove non member from a channel", slog.String("user", userName), slog.String("channel", channelName))
-				continue
+				s.logger.Warn("trying to remove non member from a channel", slog.String("user", userName), slog.String("channel", channelName))
 			default:
 				s.logger.Error("unexpected error while removing member", slog.String("user", userName), slog.Any("error", err))
-				continue
 			}
+			continue
 		}
 		user.RemoveChannel(channelName)
 		leaveMsg := protocol.Message{
@@ -399,12 +397,10 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 }
 
 func (s *Server) cleanupEmptyChannel(channelName string, channel *chat.Channel) {
+	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
-		s.mu.Lock()
-		if channel.ActiveUsersCount() == 0 {
-			delete(s.channels, channelName)
-			s.logger.Info("Channel deleted", slog.String("channel", channelName))
-		}
-		s.mu.Unlock()
+		delete(s.channels, channelName)
+		s.logger.Info("Channel deleted", slog.String("channel", channelName))
 	}
+	s.mu.Unlock()
 }
