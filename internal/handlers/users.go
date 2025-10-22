@@ -32,13 +32,13 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 
 	userProfile, err := u.userService.Register(r.Context(), req)
 	if err != nil {
-		u.logger.Error("Registration failed", slog.Any("error", err))
 		switch {
 		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
 			http.Error(w, user.ErrUserOrNickAlreadyExists.Error(), http.StatusConflict)
 		case errors.Is(err, user.ErrMissingRequiredFields):
 			http.Error(w, user.ErrMissingRequiredFields.Error(), http.StatusUnprocessableEntity)
 		default:
+			u.logger.Error("Registration failed", slog.Any("error", err))
 			http.Error(w, user.ErrInternalServer.Error(), http.StatusInternalServerError)
 		}
 		return

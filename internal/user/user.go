@@ -29,7 +29,7 @@ func (u *User) Username() string {
 	return u.profile.Username
 }
 
-func (u *User) AddConnection(client *connection.Client) {
+func (u *User) AddClient(client *connection.Client) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
@@ -45,6 +45,8 @@ func (u *User) RemoveConnection(client *connection.Client) {
 	if _, exists := u.connections[client]; exists {
 		delete(u.connections, client)
 		u.logger.Debug("Connection removed from user", slog.String("User", u.Username()), slog.Int("total_connections", len(u.connections)))
+	} else {
+		u.logger.Warn("lost synchronization - connection does not belong to the user", slog.String("User", u.Username()))
 	}
 }
 

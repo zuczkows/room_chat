@@ -23,7 +23,6 @@ var (
 type Repository interface {
 	Create(ctx context.Context, req CreateUserRequest) (*Profile, error)
 	Update(ctx context.Context, id int64, req UpdateUserRequest) (*Profile, error)
-	GetByID(ctx context.Context, id int64) (*Profile, error)
 	GetByUsername(ctx context.Context, username string) (*Profile, error)
 	Delete(ctx context.Context, id int64) error
 }
@@ -87,17 +86,6 @@ func (r *PostgresRepository) Update(ctx context.Context, id int64, req UpdateUse
 				return nil, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
 			}
 		}
-	}
-	return &profile, nil
-}
-
-func (r *PostgresRepository) GetByID(ctx context.Context, id int64) (*Profile, error) {
-	query := `SELECT id, username, nick, created_at, updated_at FROM users WHERE id = $1`
-	profile := Profile{}
-	err := r.db.QueryRowContext(ctx, query, id).
-		Scan(&profile.ID, &profile.Username, &profile.Nick, &profile.CreatedAt, &profile.UpdatedAt)
-	if err != nil {
-		return nil, err
 	}
 	return &profile, nil
 }

@@ -48,6 +48,6 @@ func setupApp() {
 
 	server := server.NewServer(logger, cfg, userService)
 	go server.Run()
-	server.StartServ()
+	server.Start()
 
 }

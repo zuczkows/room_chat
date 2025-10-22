@@ -72,7 +72,7 @@ func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Servic
 	}
 }
 
-func (s *Server) StartServ() {
+func (s *Server) Start() {
 	mux := http.NewServeMux()
 	userHandler := handlers.NewUserHandler(s.userService, s.logger)
 	authMiddleware := middleware.NewAuthMiddleware(s.userService, s.logger)
@@ -105,6 +105,22 @@ func (s *Server) Run() {
 	}
 }
 
+func (s *Server) ServeWS(w http.ResponseWriter, r *http.Request) {
+	upgrader := getUpgraderWithConfig(s.config)
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		s.logger.Error("WebSocket upgrade failed", slog.Any("error", err))
+		return
+	}
+
+	client := connection.NewClient(conn, s.unregister, s.dispatchMessage, s.logger)
+
+	s.register <- client
+	go client.ReadMessages()
+	go client.WriteMessages()
+
+}
+
 func (s *Server) handleMessage(message protocol.Message) {
 	switch message.Type {
 	case protocol.MesageActionJoin:
@@ -133,7 +149,7 @@ func (s *Server) handleLogin(message protocol.Message) {
 		s.sendMessageToClient(senderClient, protocol.ErrorMessage, "missing or invalid credentials")
 		return
 	}
-	userID, err := s.userService.Login(context.Background(), username, password)
+	profile, err := s.userService.Login(context.Background(), username, password)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserNotFound):
@@ -150,22 +166,16 @@ func (s *Server) handleLogin(message protocol.Message) {
 		}
 		return
 	}
-	profile, err := s.userService.GetProfile(context.Background(), userID)
-	if err != nil {
-		s.sendMessageToClient(senderClient, protocol.ErrorMessage, "internal server error")
-		s.logger.Error("failed to fetch user profile", slog.Int64("user_id", userID), slog.String("username", username))
-		return
-	}
 
 	senderClient.Authenticate(profile.Username)
-	s.userManager.AddConnectionToUser(username, senderClient, profile)
+	s.userManager.AddClientToUser(username, senderClient, profile)
 
 	s.sendMessageToClient(senderClient, protocol.MessageActionSystem, fmt.Sprintf("Welcome %s!", senderClient.GetUser()))
 }
 
 func (s *Server) handleJoinChannel(message protocol.Message) {
-	user, exists := s.userManager.GetUser(message.User)
-	if !exists {
+	user, err := s.userManager.GetUser(message.User)
+	if err != nil {
 		s.logger.Error("User not found for join channel", slog.String("user", message.User))
 		return
 	}
@@ -183,7 +193,7 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		s.logger.Info("Created new channel", slog.String("channel", message.Channel))
 	}
 
-	err := channel.AddUser(user.Username())
+	err = channel.AddUser(user.Username())
 	if err != nil {
 		s.mu.Unlock()
 		switch {
@@ -218,11 +228,12 @@ func (s *Server) broadcastToChannel(channelName string, message protocol.Message
 
 	users := channel.GetUsernames()
 	for _, username := range users {
-		if user, exists := s.userManager.GetUser(username); exists {
-			user.SendEvent(message)
-		} else {
-			s.logger.Warn("User not found in UserManager but exists in Channel", slog.String("username", username))
+		user, err := s.userManager.GetUser(username)
+		if err != nil {
+			s.logger.Warn("lost synchronization - User not found in UserManager but exists in Channel", slog.String("username", username))
+			continue
 		}
+		user.SendEvent(message)
 	}
 }
 
@@ -289,11 +300,12 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 		}
 	}
 
-	if user, exists := s.userManager.GetUser(username); exists {
-		user.RemoveChannel(channelName)
-	} else {
-		s.logger.Warn("authorized user does not exists in userManager", slog.String("user", username))
+	user, err := s.userManager.GetUser(username)
+	if err != nil {
+		s.logger.Warn("lost synchronization - authorized user does not exists in userManagerl", slog.String("username", username))
 	}
+	user.RemoveChannel(channelName)
+
 	leaveMsg := protocol.Message{
 		Type:    protocol.MessageActionSystem,
 		Channel: channelName,
@@ -307,22 +319,6 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 		s.logger.Info("Channel deleted", slog.String("channel", channelName))
 	}
 	s.mu.Unlock()
-
-}
-
-func (s *Server) ServeWS(w http.ResponseWriter, r *http.Request) {
-	upgrader := getUpgraderWithConfig(s.config)
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		s.logger.Error("WebSocket upgrade failed", slog.Any("error", err))
-		return
-	}
-
-	client := connection.NewClient(conn, s.unregister, s.dispatchMessage, s.logger)
-
-	s.register <- client
-	go client.ReadMessages()
-	go client.WriteMessages()
 
 }
 
@@ -343,10 +339,14 @@ func (s *Server) removeClient(client *connection.Client) {
 	}
 	s.mu.Unlock()
 
-	user, exists := s.userManager.GetUser(userName)
+	user, err := s.userManager.GetUser(userName)
+	if err != nil {
+		s.logger.Warn("lost synchronization - user not found in userManager", slog.Any("error", err))
+		return
+	}
 	s.userManager.RemoveConnectionFromUser(userName, client)
 
-	if exists && !user.HasConnections() {
+	if !user.HasConnections() {
 		s.removeUserFromAllChannels(user)
 	}
 
@@ -367,7 +367,6 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 	for _, channelName := range user.GetChannels() {
 		s.mu.RLock()
 		channel, exists := s.channels[channelName]
-		s.mu.RUnlock()
 
 		if !exists {
 			s.logger.Warn("lost synchronization - user belongs to non existing channel", slog.String("username", userName), slog.String("channel", channelName))
@@ -384,6 +383,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 			continue
 		}
 		user.RemoveChannel(channelName)
+		s.mu.RUnlock()
 		leaveMsg := protocol.Message{
 			Type:    protocol.MessageActionSystem,
 			Channel: channelName,

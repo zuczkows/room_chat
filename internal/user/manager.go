@@ -1,6 +1,7 @@
 package user
 
 import (
+	"errors"
 	"log/slog"
 	"sync"
 
@@ -26,15 +27,18 @@ func (um *UserManager) AddUser(user *User) {
 	um.mu.Unlock()
 }
 
-func (um *UserManager) GetUser(username string) (*User, bool) {
+func (um *UserManager) GetUser(username string) (*User, error) {
 	um.mu.RLock()
 	defer um.mu.RUnlock()
 
 	user, exists := um.users[username]
-	return user, exists
+	if exists {
+		return user, nil
+	}
+	return nil, errors.New("user not found")
 }
 
-func (um *UserManager) AddConnectionToUser(username string, client *connection.Client, profile *Profile) *User {
+func (um *UserManager) AddClientToUser(username string, client *connection.Client, profile *Profile) *User {
 	um.mu.Lock()
 	defer um.mu.Unlock()
 
@@ -44,7 +48,7 @@ func (um *UserManager) AddConnectionToUser(username string, client *connection.C
 		um.users[username] = user
 	}
 
-	user.AddConnection(client)
+	user.AddClient(client)
 	return user
 }
 
