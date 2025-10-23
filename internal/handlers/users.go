@@ -10,6 +10,16 @@ import (
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
+var (
+	ErrUsernameNickTaken     = errors.New("username or nickname is already taken")
+	ErrInternalServer        = errors.New("something went wrong on our side")
+	ErrMissingRequiredFields = errors.New("some required fields are missing")
+)
+
+type RegisterResponse struct {
+	ID int64 `json:"id"`
+}
+
 type UserHandler struct {
 	userService *user.Service
 	logger      *slog.Logger
@@ -30,23 +40,23 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userProfile, err := u.userService.Register(r.Context(), req)
+	userProfileID, err := u.userService.Register(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
-			http.Error(w, user.ErrUserOrNickAlreadyExists.Error(), http.StatusConflict)
+			http.Error(w, ErrUsernameNickTaken.Error(), http.StatusConflict)
 		case errors.Is(err, user.ErrMissingRequiredFields):
-			http.Error(w, user.ErrMissingRequiredFields.Error(), http.StatusUnprocessableEntity)
+			http.Error(w, ErrMissingRequiredFields.Error(), http.StatusUnprocessableEntity)
 		default:
 			u.logger.Error("Registration failed", slog.Any("error", err))
-			http.Error(w, user.ErrInternalServer.Error(), http.StatusInternalServerError)
+			http.Error(w, ErrInternalServer.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(userProfile)
+	json.NewEncoder(w).Encode(RegisterResponse{ID: userProfileID})
 }
 
 func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {

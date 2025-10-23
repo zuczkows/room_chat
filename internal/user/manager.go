@@ -8,26 +8,20 @@ import (
 	"github.com/zuczkows/room-chat/internal/connection"
 )
 
-type UserManager struct {
+type SessionManager struct {
 	users  map[string]*User
 	mu     sync.RWMutex
 	logger *slog.Logger
 }
 
-func NewUserManager(logger *slog.Logger) *UserManager {
-	return &UserManager{
+func NewSessionManager(logger *slog.Logger) *SessionManager {
+	return &SessionManager{
 		users:  make(map[string]*User),
 		logger: logger,
 	}
 }
 
-func (um *UserManager) AddUser(user *User) {
-	um.mu.Lock()
-	um.users[user.Username()] = user
-	um.mu.Unlock()
-}
-
-func (um *UserManager) GetUser(username string) (*User, error) {
+func (um *SessionManager) GetUser(username string) (*User, error) {
 	um.mu.RLock()
 	defer um.mu.RUnlock()
 
@@ -38,7 +32,7 @@ func (um *UserManager) GetUser(username string) (*User, error) {
 	return nil, errors.New("user not found")
 }
 
-func (um *UserManager) AddClientToUser(username string, client *connection.Client, profile *Profile) *User {
+func (um *SessionManager) AddClientToUser(username string, client *connection.Client, profile *Profile) *User {
 	um.mu.Lock()
 	defer um.mu.Unlock()
 
@@ -52,7 +46,7 @@ func (um *UserManager) AddClientToUser(username string, client *connection.Clien
 	return user
 }
 
-func (um *UserManager) RemoveUser(username string) {
+func (um *SessionManager) RemoveUser(username string) {
 	um.mu.Lock()
 	defer um.mu.Unlock()
 
@@ -62,7 +56,7 @@ func (um *UserManager) RemoveUser(username string) {
 	}
 }
 
-func (um *UserManager) RemoveConnectionFromUser(username string, client *connection.Client) {
+func (um *SessionManager) RemoveClientFromUser(username string, client *connection.Client) {
 	um.mu.RLock()
 	user, exists := um.users[username]
 	um.mu.RUnlock()
@@ -71,7 +65,7 @@ func (um *UserManager) RemoveConnectionFromUser(username string, client *connect
 		return
 	}
 
-	user.RemoveConnection(client)
+	user.RemoveClient(client)
 
 	if !user.HasConnections() {
 		um.RemoveUser(username)

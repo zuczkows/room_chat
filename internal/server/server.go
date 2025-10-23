@@ -47,7 +47,7 @@ type Clients map[string]*connection.Client
 type Server struct {
 	channels        Channels
 	clients         Clients
-	userManager     *user.UserManager
+	userManager     *user.SessionManager
 	register        chan *connection.Client
 	unregister      chan *connection.Client
 	dispatchMessage chan protocol.Message
@@ -62,7 +62,7 @@ func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Servic
 	return &Server{
 		channels:        make(map[string]*chat.Channel),
 		clients:         make(Clients),
-		userManager:     user.NewUserManager(logger),
+		userManager:     user.NewSessionManager(logger),
 		register:        make(chan *connection.Client),
 		unregister:      make(chan *connection.Client),
 		dispatchMessage: make(chan protocol.Message),
@@ -230,7 +230,7 @@ func (s *Server) broadcastToChannel(channelName string, message protocol.Message
 	for _, username := range users {
 		user, err := s.userManager.GetUser(username)
 		if err != nil {
-			s.logger.Warn("lost synchronization - User not found in UserManager but exists in Channel", slog.String("username", username))
+			s.logger.Warn("lost synchronization - User not found in SessionManager but exists in Channel", slog.String("username", username))
 			continue
 		}
 		user.SendEvent(message)
@@ -344,7 +344,7 @@ func (s *Server) removeClient(client *connection.Client) {
 		s.logger.Warn("lost synchronization - user not found in userManager", slog.Any("error", err))
 		return
 	}
-	s.userManager.RemoveConnectionFromUser(userName, client)
+	s.userManager.RemoveClientFromUser(userName, client)
 
 	if !user.HasConnections() {
 		s.removeUserFromAllChannels(user)

@@ -15,10 +15,10 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) Register(ctx context.Context, req CreateUserRequest) (*Profile, error) {
+func (s *Service) Register(ctx context.Context, req CreateUserRequest) (int64, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	req.Password = string(hashedPassword)
 

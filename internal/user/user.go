@@ -38,7 +38,7 @@ func (u *User) AddClient(client *connection.Client) {
 	u.logger.Debug("Connection added to user", slog.String("user", u.Username()), slog.Int("total_connections", len(u.connections)))
 }
 
-func (u *User) RemoveConnection(client *connection.Client) {
+func (u *User) RemoveClient(client *connection.Client) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 

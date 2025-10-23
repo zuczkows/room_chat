@@ -21,7 +21,7 @@ var (
 )
 
 type Repository interface {
-	Create(ctx context.Context, req CreateUserRequest) (*Profile, error)
+	Create(ctx context.Context, req CreateUserRequest) (int64, error)
 	Update(ctx context.Context, id int64, req UpdateUserRequest) (*Profile, error)
 	GetByUsername(ctx context.Context, username string) (*Profile, error)
 	Delete(ctx context.Context, id int64) error
@@ -35,30 +35,29 @@ func NewPostgresRepository(db *sql.DB) Repository {
 	return &PostgresRepository{db: db}
 }
 
-func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) (*Profile, error) {
+func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) (int64, error) {
 	query := `
         INSERT INTO users (username, password_hash, nick, created_at, updated_at)
         VALUES ($1, $2, $3, NOW(), NOW())
-        RETURNING id, username, nick, created_at, updated_at`
-	profile := Profile{}
-	err := r.db.QueryRowContext(ctx, query, req.Username, req.Password, req.Nick).
-		Scan(&profile.ID, &profile.Username, &profile.Nick, &profile.CreatedAt, &profile.UpdatedAt)
+        RETURNING id`
+	var profileID int64
+	err := r.db.QueryRowContext(ctx, query, req.Username, req.Password, req.Nick).Scan(&profileID)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case database.UniqueViolation:
-				return nil, ErrUserOrNickAlreadyExists
+				return 0, ErrUserOrNickAlreadyExists
 			case database.NotNullViolation:
-				return nil, ErrMissingRequiredFields
+				return 0, ErrMissingRequiredFields
 			default:
-				return nil, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
+				return 0, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
 			}
 		}
-		return nil, err
+		return 0, err
 	}
 
-	return &profile, nil
+	return profileID, nil
 
 }
 

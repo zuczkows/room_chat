@@ -19,7 +19,7 @@ var validate = validator.New()
 
 type Message struct {
 	Type     MessageAction `json:"type" validate:"required,oneof=join leave message login"`
-	ClientID string        `json:"client_id,omitempty"`
+	ClientID string        `json:"-"`
 	Channel  string        `json:"channel,omitempty" validate:"min=1,max=50"`
 	User     string        `json:"user,omitempty"`
 	Content  string        `json:"content" validate:"max=500"`
