@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net/http"
 	"os"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/zuczkows/room-chat/internal/config"
+	"github.com/zuczkows/room-chat/internal/database"
 	"github.com/zuczkows/room-chat/internal/server"
+	"github.com/zuczkows/room-chat/internal/user"
 )
 
 func main() {
@@ -27,12 +29,25 @@ func setupApp() {
 		Level: cfg.Logging.GetSlogLevel(),
 	}))
 
-	manager := server.NewManager(logger, cfg)
-	go manager.Run()
+	dbConfig := database.Config{
+		Host:     cfg.Database.Host,
+		Port:     cfg.Database.Port,
+		User:     cfg.Database.User,
+		Password: cfg.Database.Password.String(),
+		DBName:   cfg.Database.DbName,
+		SSLMode:  cfg.Database.SslMode,
+	}
+	db, err := database.NewPostgresConnection(dbConfig)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer db.Close()
 
-	http.HandleFunc("/ws", manager.ServeWS)
+	userRepo := user.NewPostgresRepository(db)
+	userService := user.NewService(userRepo)
 
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	logger.Info("Starting server", "address", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	server := server.NewServer(logger, cfg, userService)
+	go server.Run()
+	server.Start()
+
 }

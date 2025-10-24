@@ -5,6 +5,14 @@
       "http://localhost:8080"
     ]
   },
+  "database": {
+    "host": "localhost",
+    "port": 5432,
+    "user": "testuser",
+    "password": "#env:DB_PASSWORD",
+    "dbname": "chat",
+    "sslmode": "disable"
+  },
   "logging": {
     "level": "info"
   }

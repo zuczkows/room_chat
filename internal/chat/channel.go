@@ -1,24 +1,28 @@
 package chat
 
 import (
+	"errors"
+	"log/slog"
 	"sync"
-
-	"github.com/zuczkows/room-chat/internal/connection"
-	"github.com/zuczkows/room-chat/internal/protocol"
 )
 
-type ClientSet map[*connection.Client]bool
+var (
+	ErrUserAlreadyExists = errors.New("user already exists")
+	ErrNotAMember        = errors.New("user is not a member of a channel")
+)
 
 type Channel struct {
-	name    string
-	clients ClientSet
-	mu      sync.RWMutex
+	name   string
+	users  map[string]struct{}
+	logger *slog.Logger
+	mu     sync.RWMutex
 }
 
-func NewChannel(name string) *Channel {
+func NewChannel(name string, logger *slog.Logger) *Channel {
 	return &Channel{
-		name:    name,
-		clients: make(ClientSet),
+		name:   name,
+		logger: logger,
+		users:  make(map[string]struct{}),
 	}
 }
 
@@ -26,38 +30,51 @@ func (ch *Channel) Name() string {
 	return ch.name
 }
 
-func (ch *Channel) AddClient(client *connection.Client) {
+func (ch *Channel) AddUser(username string) error {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
-	ch.clients[client] = true
+
+	if _, exists := ch.users[username]; exists {
+		return ErrUserAlreadyExists
+	}
+	ch.users[username] = struct{}{}
+	ch.logger.Info("User joined channel", slog.String("user", username), slog.String("channel", ch.name))
+	return nil
 }
 
-func (ch *Channel) RemoveClient(client *connection.Client) {
+func (ch *Channel) RemoveUser(username string) error {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
-	delete(ch.clients, client)
+
+	if _, exists := ch.users[username]; !exists {
+		return ErrNotAMember
+	}
+
+	delete(ch.users, username)
+	ch.logger.Info("User left channel", slog.String("user", username), slog.String("channel", ch.name))
+	return nil
 }
 
-func (ch *Channel) Broadcast(message protocol.Message) {
+func (ch *Channel) HasUser(username string) bool {
+	ch.mu.RLock()
+	defer ch.mu.RUnlock()
+	_, exists := ch.users[username]
+	return exists
+}
+
+func (ch *Channel) GetUsernames() []string {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
 
-	for client := range ch.clients {
-		client.Send() <- message
+	users := make([]string, 0, len(ch.users))
+	for username := range ch.users {
+		users = append(users, username)
 	}
-}
-
-func (ch *Channel) HasUser(client *connection.Client) bool {
-	ch.mu.RLock()
-	defer ch.mu.RUnlock()
-	if _, exists := ch.clients[client]; exists {
-		return true
-	}
-	return false
+	return users
 }
 
 func (ch *Channel) ActiveUsersCount() int {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
-	return len(ch.clients)
+	return len(ch.users)
 }
