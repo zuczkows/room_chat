@@ -89,17 +89,17 @@ func (c *Client) ReadMessages() {
 		if err := json.Unmarshal(messageBytes, &message); err != nil {
 			c.logger.Error("error marshaling message", slog.Any("error", err))
 			errorMsg := protocol.Message{
-				Type:    protocol.ErrorMessage,
+				Action:  protocol.ErrorMessage,
 				Content: fmt.Sprintf("Message validation failed: %v", err),
 			}
 			c.send <- errorMsg
 			continue
 		}
 
-		if message.Type != protocol.LoginAction && !c.IsAuthenticated() {
+		if message.Action != protocol.LoginAction && !c.IsAuthenticated() {
 			c.logger.Error("user not authenticated")
 			errorMsg := protocol.Message{
-				Type:    protocol.ErrorMessage,
+				Action:  protocol.ErrorMessage,
 				Content: "You are not logged in",
 			}
 			c.send <- errorMsg
@@ -112,7 +112,7 @@ func (c *Client) ReadMessages() {
 				slog.String("user", c.GetUser()))
 
 			errorMsg := protocol.Message{
-				Type:    protocol.ErrorMessage,
+				Action:  protocol.ErrorMessage,
 				Content: fmt.Sprintf("Message validation failed: %v", err),
 			}
 			c.send <- errorMsg
