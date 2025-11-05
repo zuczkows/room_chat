@@ -20,7 +20,7 @@ import (
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
-func TestUserHandler_HandleRegister(t *testing.T) {
+func TestUserHandler(t *testing.T) {
 
 	db, cleanup, err := SetupDB()
 	if err != nil {
@@ -75,7 +75,7 @@ func TestUserHandler_HandleRegister(t *testing.T) {
 				Password: "password123",
 			},
 			expectedStatus: http.StatusUnprocessableEntity,
-			expectedError:  handlers.ErrUseNameEmpty.Error(),
+			expectedError:  handlers.ErrUserNameEmpty.Error(),
 		},
 		{
 			name:              "invalid JSON",

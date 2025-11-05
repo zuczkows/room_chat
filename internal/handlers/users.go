@@ -14,7 +14,7 @@ var (
 	ErrUsernameNickTaken     = errors.New("username or nickname is already taken")
 	ErrInternalServer        = errors.New("something went wrong on our side")
 	ErrMissingRequiredFields = errors.New("some required fields are missing")
-	ErrUseNameEmpty          = errors.New("username can not be empty")
+	ErrUserNameEmpty         = errors.New("username can not be empty")
 )
 
 type RegisterResponse struct {
@@ -49,7 +49,7 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, user.ErrMissingRequiredFields):
 			http.Error(w, ErrMissingRequiredFields.Error(), http.StatusUnprocessableEntity)
 		case errors.Is(err, user.ErrUserEmpty):
-			http.Error(w, ErrUseNameEmpty.Error(), http.StatusUnprocessableEntity)
+			http.Error(w, ErrUserNameEmpty.Error(), http.StatusUnprocessableEntity)
 		default:
 			u.logger.Error("Registration failed", slog.Any("error", err))
 			http.Error(w, ErrInternalServer.Error(), http.StatusInternalServerError)

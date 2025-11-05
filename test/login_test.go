@@ -16,7 +16,7 @@ import (
 	"github.com/zuczkows/room-chat/test/internal/websocket"
 )
 
-func TestWebSocket(t *testing.T) {
+func TestLogin(t *testing.T) {
 
 	db, cleanup, err := SetupDB()
 	require.NoError(t, err, "failed to setup database")
