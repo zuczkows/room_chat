@@ -40,6 +40,10 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
+	if req.Username == "" {
+		http.Error(w, ErrUserNameEmpty.Error(), http.StatusUnprocessableEntity)
+		return
+	}
 
 	userProfileID, err := u.userService.Register(r.Context(), req)
 	if err != nil {
@@ -48,8 +52,6 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, ErrUsernameNickTaken.Error(), http.StatusConflict)
 		case errors.Is(err, user.ErrMissingRequiredFields):
 			http.Error(w, ErrMissingRequiredFields.Error(), http.StatusUnprocessableEntity)
-		case errors.Is(err, user.ErrUserEmpty):
-			http.Error(w, ErrUserNameEmpty.Error(), http.StatusUnprocessableEntity)
 		default:
 			u.logger.Error("Registration failed", slog.Any("error", err))
 			http.Error(w, ErrInternalServer.Error(), http.StatusInternalServerError)

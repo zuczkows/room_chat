@@ -17,13 +17,6 @@ import (
 )
 
 func TestLogin(t *testing.T) {
-
-	db, cleanup, err := SetupDB()
-	require.NoError(t, err, "failed to setup database")
-	defer cleanup()
-
-	userService := SetupServer(db)
-
 	testUser := CreateTestUser1(t, userService)
 
 	t.Run("successful_login", func(t *testing.T) {

@@ -1,4 +1,4 @@
-//go:build integration2
+//go:build integration
 
 package test
 
@@ -18,12 +18,6 @@ import (
 )
 
 func TestChannel(t *testing.T) {
-
-	db, cleanup, err := SetupDB()
-	require.NoError(t, err, "failed to setup database")
-	defer cleanup()
-
-	userService := SetupServer(db)
 
 	testUser1 := CreateTestUser1(t, userService)
 	testUser2 := CreateTestUser2(t, userService)

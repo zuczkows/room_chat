@@ -18,7 +18,6 @@ var (
 	ErrInvalidPassword         = errors.New("invalid password")
 	ErrInternalServer          = errors.New("internal server error")
 	ErrMissingRequiredFields   = errors.New("required fields are missing")
-	ErrUserEmpty               = errors.New("username can not be empty")
 )
 
 type Repository interface {
@@ -51,8 +50,6 @@ func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) 
 				return 0, ErrUserOrNickAlreadyExists
 			case database.NotNullViolation:
 				return 0, ErrMissingRequiredFields
-			case database.CheckViolation:
-				return 0, ErrUserEmpty
 			default:
 				return 0, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
 			}

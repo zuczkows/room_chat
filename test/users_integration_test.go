@@ -5,7 +5,6 @@ package test
 import (
 	"bytes"
 	"encoding/json"
-	"log"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -21,16 +20,10 @@ import (
 )
 
 func TestUserHandler(t *testing.T) {
-
-	db, cleanup, err := SetupDB()
-	if err != nil {
-		log.Printf("failed to setup database: %s", err)
-	}
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	handler := handlers.NewUserHandler(userService, logger)
-	defer cleanup()
 
 	tests := []struct {
 		name              string
