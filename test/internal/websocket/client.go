@@ -166,11 +166,11 @@ func (c *WSClient) Close() error {
 	return nil
 }
 
-func (c *WSClient) GetPushes(push string) []*protocol.Message {
+func (c *WSClient) GetPushes(action protocol.MessageAction) []*protocol.Message {
 	c.mu.RLock()
 	var pushes []*protocol.Message
 	for _, msg := range c.pushStore {
-		if msg.Action == protocol.MessageAction(protocol.MessageTypePush) {
+		if msg.Action == protocol.MessageAction(action) {
 			pushes = append(pushes, msg)
 		}
 	}
