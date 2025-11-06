@@ -18,22 +18,37 @@ const (
 
 const (
 	MessageTypePush     MessageType = "push"
+	MessageTypeRequest  MessageType = "request"
 	MessageTypeResponse MessageType = "response"
 )
 
 var validate = validator.New()
 
 type Message struct {
-	RequestID string        `json:"request_id,omitempty"`
 	Action    MessageAction `json:"action" validate:"required,oneof=join leave message login"`
 	Type      MessageType   `json:"type,omitempty"`
-	Channel   string        `json:"channel,omitempty"`
-	User      string        `json:"user,omitempty"`
-	Content   string        `json:"content,omitempty" validate:"max=500"`
-	Token     string        `json:"token,omitempty"`
 	ClientID  string        `json:"-"`
-	Success   *bool         `json:"success,omitempty"`
-	RespErr   *Err          `json:"error,omitempty"`
+	User      string        `json:"user,omitempty"`
+	RequestID string        `json:"request_id,omitempty"`
+	Channel   string        `json:"channel,omitempty"`
+	*Response `json:"response,omitempty"`
+	*Push     `json:"push,omitempty"`
+	Request
+}
+
+type Response struct {
+	Content string `json:"content,omitempty" validate:"max=500"`
+	Success bool   `json:"success"`
+	RespErr *Err   `json:"error,omitempty"`
+}
+
+type Push struct {
+	Content string `json:"content,omitempty" validate:"max=500"`
+}
+
+type Request struct {
+	Message string `json:"message,omitempty" validate:"max=500"`
+	Token   string `json:"token,omitempty"`
 }
 
 type Err struct {

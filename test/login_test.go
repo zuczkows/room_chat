@@ -34,7 +34,7 @@ func TestLogin(t *testing.T) {
 		accessToken := utils.GetEncodedBase64Token(testUser.Username, testUser.Password)
 		loginResponse, err := ws.Login(accessToken)
 		require.NoError(t, err)
-		assert.Equal(t, fmt.Sprintf("Welcome %s!", testUser.Username), loginResponse.Content)
+		assert.Equal(t, fmt.Sprintf("Welcome %s!", testUser.Username), loginResponse.Response.Content)
 	})
 
 	t.Run("duplicate_login_error", func(t *testing.T) {

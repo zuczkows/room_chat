@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/zuczkows/room-chat/internal/protocol"
 )
 
 type RoomChatWS struct {
@@ -25,19 +27,18 @@ func NewRoomChatWS(baseURL string, wsTimeout time.Duration, user string) (*RoomC
 	}, nil
 }
 
-type loginResPayload struct {
-	RequestID string `json:"request_id"`
-	Action    string `json:"action"`
-	Type      string `json:"type"`
-	Content   string `json:"content"`
-}
-
-func (a *RoomChatWS) Login(accessToken string) (*loginResPayload, error) {
-	response, err := a.SendRequest("login", accessToken)
+func (a *RoomChatWS) Login(accessToken string) (*protocol.Message, error) {
+	request := &protocol.Message{
+		Action: protocol.MessageAction("login"),
+		Request: protocol.Request{
+			Token: accessToken,
+		},
+	}
+	response, err := a.SendRequest(request)
 	if err != nil {
 		return nil, err
 	}
-	if response.Success == nil || !*response.Success {
+	if !response.Success {
 		return nil, HandleWSError(response)
 	}
 	resBytes, err := json.Marshal(response)
@@ -45,7 +46,7 @@ func (a *RoomChatWS) Login(accessToken string) (*loginResPayload, error) {
 		return nil, err
 	}
 
-	resPayload := &loginResPayload{}
+	resPayload := &protocol.Message{}
 	if err := json.Unmarshal(resBytes, resPayload); err != nil {
 		return nil, err
 	}

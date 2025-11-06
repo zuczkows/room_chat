@@ -11,32 +11,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/zuczkows/room-chat/internal/protocol"
 )
-
-type Message struct {
-	RequestID string `json:"request_id,omitempty"`
-	Action    string `json:"action" validate:"required,oneof=join leave message login"`
-	Type      string `json:"type,omitempty"`
-	Channel   string `json:"channel,omitempty" validate:"min=1,max=50"`
-	User      string `json:"user,omitempty"`
-	Content   string `json:"content" validate:"max=500"`
-	Token     string `json:"token,omitempty"`
-	ClientID  string `json:"-"`
-	Success   *bool  `json:"success,omitempty"`
-	RespErr   *Err   `json:"error,omitempty"`
-}
-
-type Err struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
-}
-
-type WSRequest struct {
-	RequestID string `json:"request_id"`
-	Action    string `json:"action"`
-	Channel   string `json:"channel"`
-	Token     string `json:"token"`
-}
 
 type WSError struct {
 	Type    string
@@ -47,8 +23,8 @@ type WSError struct {
 type WSClient struct {
 	conn            *websocket.Conn
 	mu              sync.RWMutex
-	pendingRequests map[string]chan *Message
-	pushStore       []*Message
+	pendingRequests map[string]chan *protocol.Message
+	pushStore       []*protocol.Message
 	responseTimeout time.Duration
 	user            string
 	closed          bool
@@ -68,8 +44,8 @@ func NewWSClient(wsURL string, wsTimeout time.Duration, user string) (*WSClient,
 
 	client := &WSClient{
 		conn:            c,
-		pendingRequests: make(map[string]chan *Message),
-		pushStore:       make([]*Message, 0),
+		pendingRequests: make(map[string]chan *protocol.Message),
+		pushStore:       make([]*protocol.Message, 0),
 		responseTimeout: wsTimeout,
 		user:            user,
 		closed:          false,
@@ -86,7 +62,7 @@ func (c *WSClient) messageHandler() {
 		case <-c.done:
 			return
 		default:
-			var msg Message
+			var msg protocol.Message
 			err := c.conn.ReadJSON(&msg)
 			if err != nil {
 				if websocket.IsCloseError(err, websocket.CloseNormalClosure) ||
@@ -110,7 +86,7 @@ func (c *WSClient) messageHandler() {
 	}
 }
 
-func (c *WSClient) handleResponse(msg *Message) {
+func (c *WSClient) handleResponse(msg *protocol.Message) {
 	if msg.RequestID == "" {
 		return
 	}
@@ -125,30 +101,25 @@ func (c *WSClient) handleResponse(msg *Message) {
 	}
 
 	log.Printf("Received response %s, action %s, content %s",
-		msg.RequestID, msg.Action, msg.Content)
+		msg.RequestID, msg.Action, msg.Response.Content)
 
 	respChan <- msg
 }
 
-func (c *WSClient) handlePush(msg *Message) {
+func (c *WSClient) handlePush(msg *protocol.Message) {
 	log.Printf("Received push: action %s, user %s, content %s",
-		msg.Action, msg.User, msg.Content)
+		msg.Action, msg.User, msg.Push.Content)
 	c.mu.Lock()
 	c.pushStore = append(c.pushStore, msg)
 	c.mu.Unlock()
 }
 
-// NOTE(zuczkows): to refactor - only works for login action now
-func (c *WSClient) SendRequest(action string, token string) (*Message, error) {
+func (c *WSClient) SendRequest(req *protocol.Message) (*protocol.Message, error) {
 	requestID := fmt.Sprintf("%d", rand.Int63())
+	req.RequestID = requestID
+	req.Type = protocol.MessageTypeRequest
 
-	req := WSRequest{
-		RequestID: requestID,
-		Action:    action,
-		Token:     token,
-	}
-
-	respChan := make(chan *Message, 1)
+	respChan := make(chan *protocol.Message, 1)
 
 	c.mu.Lock()
 	c.pendingRequests[requestID] = respChan
@@ -170,7 +141,7 @@ func (c *WSClient) SendRequest(action string, token string) (*Message, error) {
 	case response := <-respChan:
 		return response, nil
 	case <-time.After(c.responseTimeout):
-		return nil, fmt.Errorf("timeout waiting for response to %s", action)
+		return nil, fmt.Errorf("timeout waiting for response to %s", req.Action)
 	}
 }
 
@@ -195,11 +166,11 @@ func (c *WSClient) Close() error {
 	return nil
 }
 
-func (c *WSClient) GetPushes(push string) []*Message {
+func (c *WSClient) GetPushes(push string) []*protocol.Message {
 	c.mu.RLock()
-	var pushes []*Message
+	var pushes []*protocol.Message
 	for _, msg := range c.pushStore {
-		if msg.Action == push {
+		if msg.Action == protocol.MessageAction(protocol.MessageTypePush) {
 			pushes = append(pushes, msg)
 		}
 	}
@@ -209,7 +180,7 @@ func (c *WSClient) GetPushes(push string) []*Message {
 
 func (c *WSClient) ClearPushes() {
 	c.mu.Lock()
-	c.pushStore = make([]*Message, 0)
+	c.pushStore = make([]*protocol.Message, 0)
 	c.mu.Unlock()
 }
 
@@ -217,7 +188,7 @@ func (e *WSError) Error() string {
 	return fmt.Sprintf("%s (type: %s)", e.Message, e.Type)
 }
 
-func HandleWSError(response *Message) error {
+func HandleWSError(response *protocol.Message) error {
 	return &WSError{
 		Type:    response.RespErr.Type,
 		Message: response.RespErr.Message,
