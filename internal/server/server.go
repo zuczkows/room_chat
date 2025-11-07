@@ -196,7 +196,7 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 	}
 	channel, exists := s.channels[message.Channel]
 	if !exists {
-		s.channels[message.Channel] = chat.NewChannel(message.Channel, s.logger)
+		s.channels[message.Channel] = chat.NewChannel(message.Channel, s.logger, s.userManager)
 		channel = s.channels[message.Channel]
 		s.logger.Info("Created new channel", slog.String("channel", message.Channel))
 	}
@@ -217,31 +217,7 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 	user.AddChannel(message.Channel)
 	s.mu.Unlock()
 	s.sendResponse(senderClient, fmt.Sprintf("Welcome in channel %s!", message.Channel), message.RequestID)
-	joinMsg := protocol.Message{
-		Action:  protocol.MessageActionSystem,
-		Type:    protocol.MessageTypePush,
-		Channel: message.Channel,
-		Push: &protocol.Push{
-			Content: fmt.Sprintf("%s joined the channel", user.Username()),
-		},
-	}
-	s.broadcastToChannel(message.Channel, joinMsg)
-}
-
-func (s *Server) broadcastToChannel(channelName string, message protocol.Message) {
-	s.mu.RLock()
-	channel, exists := s.channels[channelName]
-	s.mu.RUnlock()
-
-	if !exists {
-		s.logger.Error("error while broadcasting to channel", slog.String("channel doesnt exists", channelName))
-		return
-	}
-
-	users := channel.GetUsernames()
-	for _, username := range users {
-		s.userManager.SendMessage(username, message)
-	}
+	channel.SendWelcomeMessage(user.Username())
 }
 
 func (s *Server) handleSendMessage(message protocol.Message) {
@@ -268,16 +244,7 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 		return
 	}
 	s.sendResponse(senderClient, "message sent", message.RequestID)
-	messageToSend := protocol.Message{
-		Action:  "message",
-		Type:    protocol.MessageTypePush,
-		Channel: message.Channel,
-		User:    message.User,
-		Push: &protocol.Push{
-			Content: message.Message,
-		},
-	}
-	s.broadcastToChannel(message.Channel, messageToSend)
+	channel.SendMessage(message.User, message.Message)
 	s.logger.Info("Message sent to channel", slog.String("channel", message.Channel), slog.String("user", username))
 }
 
@@ -322,15 +289,7 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 	user.RemoveChannel(channelName)
 
 	s.sendResponse(senderClient, fmt.Sprintf("You left channel: %s!", message.Channel), message.RequestID)
-	leaveMsg := protocol.Message{
-		Action:  protocol.MessageActionSystem,
-		Type:    protocol.MessageTypePush,
-		Channel: channelName,
-		Push: &protocol.Push{
-			Content: fmt.Sprintf("%s left the channel", username),
-		},
-	}
-	s.broadcastToChannel(channelName, leaveMsg)
+	channel.SendLeaveMessage(user.Username())
 
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
@@ -424,15 +383,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 		}
 		user.RemoveChannel(channelName)
 		s.mu.RUnlock()
-		leaveMsg := protocol.Message{
-			Action:  protocol.MessageActionSystem,
-			Type:    protocol.MessageTypePush,
-			Channel: channelName,
-			Push: &protocol.Push{
-				Content: fmt.Sprintf("%s left the channel", userName),
-			},
-		}
-		s.broadcastToChannel(channelName, leaveMsg)
+		channel.SendLeaveMessage(userName)
 
 		s.cleanupEmptyChannel(channelName, channel)
 
