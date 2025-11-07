@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/zuczkows/room-chat/internal/connection"
+	"github.com/zuczkows/room-chat/internal/protocol"
 )
 
 type SessionManager struct {
@@ -70,4 +71,14 @@ func (um *SessionManager) RemoveClientFromUser(username string, client *connecti
 	if !user.HasConnections() {
 		um.RemoveUser(username)
 	}
+}
+
+func (um *SessionManager) SendMessage(username string, message protocol.Message) error {
+	user, err := um.GetUser(username)
+	if err != nil {
+		return err
+	}
+
+	user.SendEvent(message)
+	return nil
 }

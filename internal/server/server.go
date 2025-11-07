@@ -240,12 +240,7 @@ func (s *Server) broadcastToChannel(channelName string, message protocol.Message
 
 	users := channel.GetUsernames()
 	for _, username := range users {
-		user, err := s.userManager.GetUser(username)
-		if err != nil {
-			s.logger.Warn("lost synchronization - User not found in SessionManager but exists in Channel", slog.String("username", username))
-			continue
-		}
-		user.SendEvent(message)
+		s.userManager.SendMessage(username, message)
 	}
 }
 
