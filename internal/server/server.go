@@ -26,6 +26,15 @@ const (
 	WriteBufferSize = 1024
 )
 
+const (
+	MissingToken                = "Missing token."
+	ClientNotFound              = "Client not found for login."
+	MissingOrInvalidCredentials = "Missing or invalid credentials."
+	InternalServerError         = "Internal sever error."
+	AlreadyLoggedIn             = "Already logged in."
+	AlreadyInChannel            = "You are already in this channel."
+)
+
 func getUpgraderWithConfig(cfg *config.Config) websocket.Upgrader {
 	return websocket.Upgrader{
 		ReadBufferSize:  ReadBufferSize,
@@ -122,7 +131,7 @@ func (s *Server) ServeWS(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMessage(message protocol.Message) {
-	switch message.Type {
+	switch message.Action {
 	case protocol.MesageActionJoin:
 		s.handleJoinChannel(message)
 	case protocol.MessageActionLeave:
@@ -140,13 +149,17 @@ func (s *Server) handleLogin(message protocol.Message) {
 
 	senderClient, exists := s.clients[message.ClientID]
 	if !exists {
-		s.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
+		s.logger.Error(ClientNotFound, slog.String("clientID", message.ClientID))
+		return
+	}
+	if message.Request.Token == "" {
+		s.sendError(senderClient, MissingToken, message.RequestID, protocol.AuthorizationError)
 		return
 	}
 
-	username, password, ok := utils.ParseBasicAuth(message.Token)
+	username, password, ok := utils.ParseBasicAuth(message.Request.Token)
 	if !ok {
-		s.sendMessageToClient(senderClient, protocol.ErrorMessage, "missing or invalid credentials")
+		s.sendError(senderClient, MissingOrInvalidCredentials, message.RequestID, protocol.AuthorizationError)
 		return
 	}
 	profile, err := s.userService.Login(context.Background(), username, password)
@@ -155,22 +168,26 @@ func (s *Server) handleLogin(message protocol.Message) {
 		case errors.Is(err, user.ErrUserNotFound):
 			s.logger.Info("login attempt with wrong username",
 				slog.String("username", username))
-			s.sendMessageToClient(senderClient, protocol.ErrorMessage, "invalid username or password")
+			s.sendError(senderClient, "invalid username or password", message.RequestID, protocol.AuthorizationError)
 		case errors.Is(err, user.ErrInvalidPassword):
 			s.logger.Info("login attempt with wrong password",
 				slog.String("username", username))
-			s.sendMessageToClient(senderClient, protocol.ErrorMessage, "invalid username or password")
+			s.sendError(senderClient, "invalid username or password", message.RequestID, protocol.AuthorizationError)
 		default:
 			s.logger.Error("login internal service error", slog.String("username", username), slog.Any("error", err))
-			s.sendMessageToClient(senderClient, protocol.ErrorMessage, "internal server error")
+			s.sendError(senderClient, InternalServerError, message.RequestID, protocol.InternalServerError)
 		}
 		return
 	}
 
+	if senderClient.IsAuthenticated() {
+		s.sendError(senderClient, AlreadyLoggedIn, message.RequestID, protocol.ValidationError)
+		return
+	}
 	senderClient.Authenticate(profile.Username)
 	s.userManager.AddClientToUser(username, senderClient, profile)
 
-	s.sendMessageToClient(senderClient, protocol.MessageActionSystem, fmt.Sprintf("Welcome %s!", senderClient.GetUser()))
+	s.sendResponse(senderClient, fmt.Sprintf("Welcome %s!", profile.Username), message.RequestID)
 }
 
 func (s *Server) handleJoinChannel(message protocol.Message) {
@@ -188,7 +205,7 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 	}
 	channel, exists := s.channels[message.Channel]
 	if !exists {
-		s.channels[message.Channel] = chat.NewChannel(message.Channel, s.logger)
+		s.channels[message.Channel] = chat.NewChannel(message.Channel, s.logger, s.userManager)
 		channel = s.channels[message.Channel]
 		s.logger.Info("Created new channel", slog.String("channel", message.Channel))
 	}
@@ -198,43 +215,18 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		s.mu.Unlock()
 		switch {
 		case errors.Is(err, chat.ErrUserAlreadyExists):
-			s.sendMessageToClient(senderClient, protocol.ErrorMessage, "You are already in this channel")
+			s.sendError(senderClient, AlreadyInChannel, message.RequestID, protocol.ConflictError)
 		default:
 			s.logger.Error("unexpected error adding user to channel", slog.String("user", user.Username()), slog.String("channel", message.Channel), slog.Any("error", err))
-			s.sendMessageToClient(senderClient, protocol.ErrorMessage, "Internal server error")
+			s.sendError(senderClient, InternalServerError, message.RequestID, protocol.InternalServerError)
 		}
 		return
 	}
 
 	user.AddChannel(message.Channel)
 	s.mu.Unlock()
-	joinMsg := protocol.Message{
-		Type:    protocol.MessageActionSystem,
-		Channel: message.Channel,
-		Content: fmt.Sprintf("%s joined the channel", user.Username()),
-	}
-	s.broadcastToChannel(message.Channel, joinMsg)
-}
-
-func (s *Server) broadcastToChannel(channelName string, message protocol.Message) {
-	s.mu.RLock()
-	channel, exists := s.channels[channelName]
-	s.mu.RUnlock()
-
-	if !exists {
-		s.logger.Error("error while broadcasting to channel", slog.String("channel doesnt exists", channelName))
-		return
-	}
-
-	users := channel.GetUsernames()
-	for _, username := range users {
-		user, err := s.userManager.GetUser(username)
-		if err != nil {
-			s.logger.Warn("lost synchronization - User not found in SessionManager but exists in Channel", slog.String("username", username))
-			continue
-		}
-		user.SendEvent(message)
-	}
+	s.sendResponse(senderClient, fmt.Sprintf("Welcome in channel %s!", message.Channel), message.RequestID)
+	channel.SendWelcomeMessage(user.Username())
 }
 
 func (s *Server) handleSendMessage(message protocol.Message) {
@@ -250,19 +242,18 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 	s.mu.RUnlock()
 
 	if !exists {
-		s.sendMessageToClient(senderClient, protocol.MessageActionSystem,
-			fmt.Sprintf("Channel does not exist: %s", message.Channel))
+		s.sendError(senderClient,
+			fmt.Sprintf("Channel does not exist: %s", message.Channel), message.RequestID, protocol.ValidationError)
 		return
 	}
 
 	username := senderClient.GetUser()
 	if !channel.HasUser(username) {
-		s.sendMessageToClient(senderClient, protocol.MessageActionSystem,
-			fmt.Sprintf("You are not a member of this channel: %s", message.Channel))
+		s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, protocol.ForbiddenError)
 		return
 	}
-
-	s.broadcastToChannel(message.Channel, message)
+	s.sendResponse(senderClient, "message sent", message.RequestID)
+	channel.SendMessage(message.User, message.Request.Content)
 	s.logger.Info("Message sent to channel", slog.String("channel", message.Channel), slog.String("user", username))
 }
 
@@ -279,14 +270,14 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 	channel, exists := s.channels[channelName]
 	if !exists {
 		s.mu.RUnlock()
-		s.sendMessageToClient(senderClient, protocol.ErrorMessage, fmt.Sprintf("channel %s does not exist", channelName))
+		s.sendError(senderClient, fmt.Sprintf("Channel %s does not exist", channelName), message.RequestID, protocol.ValidationError)
 		return
 	}
 	s.mu.RUnlock()
 
 	username := senderClient.GetUser()
 	if !channel.HasUser(username) {
-		s.sendMessageToClient(senderClient, protocol.ErrorMessage, fmt.Sprintf("You are not a member of channel '%s'", channelName))
+		s.sendError(senderClient, fmt.Sprintf("You are not a member of channel '%s'", channelName), message.RequestID, protocol.ForbiddenError)
 		return
 	}
 
@@ -306,12 +297,8 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 	}
 	user.RemoveChannel(channelName)
 
-	leaveMsg := protocol.Message{
-		Type:    protocol.MessageActionSystem,
-		Channel: channelName,
-		Content: fmt.Sprintf("%s left the channel", username),
-	}
-	s.broadcastToChannel(channelName, leaveMsg)
+	s.sendResponse(senderClient, fmt.Sprintf("You left channel: %s!", message.Channel), message.RequestID)
+	channel.SendLeaveMessage(user.Username())
 
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
@@ -353,10 +340,31 @@ func (s *Server) removeClient(client *connection.Client) {
 	s.logger.Info("Client unregistered", slog.String("user", userName))
 }
 
-func (s *Server) sendMessageToClient(client *connection.Client, messageAction protocol.MessageAction, message string) {
+func (s *Server) sendError(client *connection.Client, message, requestID string, errType protocol.ErrorType) {
 	msg := protocol.Message{
-		Type:    messageAction,
-		Content: message,
+		Type:      protocol.MessageTypeResponse,
+		RequestID: requestID,
+		Action:    protocol.ErrorMessage,
+		Response: &protocol.Response{
+			Success: false,
+			RespErr: &protocol.ErrorDetails{
+				Type:    errType,
+				Message: message,
+			},
+		},
+	}
+	client.Send() <- msg
+}
+
+func (s *Server) sendResponse(client *connection.Client, message, requestID string) {
+	msg := protocol.Message{
+		Type:      protocol.MessageTypeResponse,
+		RequestID: requestID,
+		Action:    protocol.MessageActionText,
+		Response: &protocol.Response{
+			Content: message,
+			Success: true,
+		},
 	}
 	client.Send() <- msg
 }
@@ -384,12 +392,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 		}
 		user.RemoveChannel(channelName)
 		s.mu.RUnlock()
-		leaveMsg := protocol.Message{
-			Type:    protocol.MessageActionSystem,
-			Channel: channelName,
-			Content: fmt.Sprintf("%s left the channel", userName),
-		}
-		s.broadcastToChannel(channelName, leaveMsg)
+		channel.SendLeaveMessage(userName)
 
 		s.cleanupEmptyChannel(channelName, channel)
 

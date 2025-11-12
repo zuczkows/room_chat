@@ -5,6 +5,8 @@ import (
 )
 
 type MessageAction string
+type MessageType string
+type ErrorType string
 
 const (
 	MesageActionJoin    MessageAction = "join"
@@ -15,15 +17,52 @@ const (
 	LoginAction         MessageAction = "login"
 )
 
+const (
+	MessageTypePush     MessageType = "push"
+	MessageTypeRequest  MessageType = "request"
+	MessageTypeResponse MessageType = "response"
+)
+
+const (
+	AuthorizationError  ErrorType = "authorization"
+	ValidationError     ErrorType = "validation"
+	ForbiddenError      ErrorType = "forbidden"
+	InternalServerError ErrorType = "internal server error"
+	ConflictError       ErrorType = "conflict"
+)
+
 var validate = validator.New()
 
 type Message struct {
-	Type     MessageAction `json:"type" validate:"required,oneof=join leave message login"`
-	ClientID string        `json:"-"`
-	Channel  string        `json:"channel,omitempty" validate:"min=1,max=50"`
-	User     string        `json:"user,omitempty"`
-	Content  string        `json:"content" validate:"max=500"`
-	Token    string        `json:"token,omitempty"`
+	Action    MessageAction `json:"action" validate:"required,oneof=join leave message login"`
+	Type      MessageType   `json:"type,omitempty"`
+	ClientID  string        `json:"-"`
+	User      string        `json:"user,omitempty"`
+	RequestID string        `json:"request_id,omitempty"`
+	Channel   string        `json:"channel,omitempty"`
+	Response  *Response     `json:"response,omitempty"`
+	Push      *Push         `json:"push,omitempty"`
+	Request
+}
+
+type Response struct {
+	Content string        `json:"content,omitempty" validate:"max=500"`
+	Success bool          `json:"success"`
+	RespErr *ErrorDetails `json:"error,omitempty"`
+}
+
+type Push struct {
+	Content string `json:"content,omitempty" validate:"max=500"`
+}
+
+type Request struct {
+	Content string `json:"content,omitempty" validate:"max=500"`
+	Token   string `json:"token,omitempty"`
+}
+
+type ErrorDetails struct {
+	Type    ErrorType `json:"type"`
+	Message string    `json:"message"`
 }
 
 // note from zuczkows - I think I should manually check struct and return nice
