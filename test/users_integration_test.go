@@ -40,7 +40,7 @@ func TestUserHandlerPositive(t *testing.T) {
 
 		handler.HandleRegister(w, req)
 
-		assert.Equal(t, http.StatusCreated, w.Code)
+		require.Equal(t, http.StatusCreated, w.Code)
 	})
 }
 
@@ -106,7 +106,7 @@ func TestUserHandlerNegative(t *testing.T) {
 
 			handler.HandleRegister(w, req)
 
-			assert.Equal(t, tt.expectedStatus, w.Code)
+			require.Equal(t, tt.expectedStatus, w.Code)
 			assert.Contains(t, w.Body.String(), tt.expectedError)
 		})
 	}
