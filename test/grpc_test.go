@@ -5,6 +5,7 @@ package test
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"log"
 	"log/slog"
 	"net"
@@ -25,6 +26,11 @@ import (
 	pb "github.com/zuczkows/room-chat/protobuf"
 )
 
+const (
+	grpcAddr = "0.0.0.0"
+	grpcPort = "50051"
+)
+
 func TestGrpc(t *testing.T) {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
@@ -33,7 +39,7 @@ func TestGrpc(t *testing.T) {
 
 	grpcServer := server.NewGrpcServer(userService, logger)
 
-	lis, err := net.Listen("tcp", ":50051") // #TODO: Move gRPC port to config
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", grpcPort))
 	if err != nil {
 		logger.Error("Failed to listen", slog.Any("error", err))
 	}
@@ -45,7 +51,7 @@ func TestGrpc(t *testing.T) {
 	}()
 	time.Sleep(100 * time.Millisecond)
 
-	grpcConn, err := grpc.NewClient("0.0.0.0:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	grpcConn, err := grpc.NewClient(fmt.Sprintf("%s:%s", grpcAddr, grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect: %v\n", err)
 	}
