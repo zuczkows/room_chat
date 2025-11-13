@@ -23,6 +23,7 @@ const (
 	ErrInternalServer            = "Something went wrong on our side."
 	ErrMissingRequiredFields     = "Some required fields are missing."
 	ErrUserNameEmpty             = "Username can not be empty."
+	ErrUPasswordEmpty            = "Password can not be empty."
 	ErrInvalidUsernameOrPassword = "Invalid username or password."
 	ErrNickAlreadyExists         = "Nick already exists."
 )
@@ -86,6 +87,9 @@ func getUserIDFromContext(ctx context.Context) (int64, bool) {
 func (s *GrpcServer) RegisterProfile(ctx context.Context, in *pb.RegisterProfileRequest) (*pb.RegisterProfileResponse, error) {
 	if in.Username == "" {
 		return nil, status.Errorf(codes.InvalidArgument, ErrUserNameEmpty)
+	}
+	if in.Password == "" {
+		return nil, status.Errorf(codes.InvalidArgument, ErrUPasswordEmpty)
 	}
 
 	req := user.CreateUserRequest{
