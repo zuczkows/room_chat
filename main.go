@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"net"
 	"os"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -54,15 +53,11 @@ func setupApp() {
 		srv.Start()
 	}()
 
-	grpcServer := server.NewGrpcServer(userService, logger)
-
-	lis, err := net.Listen("tcp", ":50051") // #TODO: Move gRPC port to config
-	if err != nil {
-		logger.Error("Failed to listen", slog.Any("error", err))
-		os.Exit(1)
+	grpcConfig := server.GrpcConfig{
+		Host: cfg.GRPC.Host,
+		Port: cfg.GRPC.Port,
 	}
-	logger.Info("Starting gRPC server", slog.String("address", ":50051"))
-	if err := grpcServer.Serve(lis); err != nil {
+	if err := server.StartGrpcServer(userService, logger, grpcConfig); err != nil {
 		logger.Error("Failed to serve gRPC", slog.Any("error", err))
 		os.Exit(1)
 	}

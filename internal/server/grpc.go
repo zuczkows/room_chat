@@ -3,7 +3,9 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 
 	"github.com/zuczkows/room-chat/internal/user"
 	"github.com/zuczkows/room-chat/internal/utils"
@@ -14,18 +16,27 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+type GrpcConfig struct {
+	Host string
+	Port int
+}
+
 type contextKey string
 
 const UserContextKey contextKey = "user"
 
 const (
-	ErrUsernameNickTaken         = "Username or nickname is already taken."
-	ErrInternalServer            = "Something went wrong on our side."
-	ErrMissingRequiredFields     = "Some required fields are missing."
-	ErrUserNameEmpty             = "Username can not be empty."
-	ErrUPasswordEmpty            = "Password can not be empty."
-	ErrInvalidUsernameOrPassword = "Invalid username or password."
-	ErrNickAlreadyExists         = "Nick already exists."
+	ErrUsernameNickTaken           = "Username or nickname is already taken."
+	ErrInternalServer              = "Something went wrong on our side."
+	ErrMissingRequiredFields       = "Some required fields are missing."
+	ErrUserNameEmpty               = "Username can not be empty."
+	ErrUPasswordEmpty              = "Password can not be empty."
+	ErrInvalidUsernameOrPassword   = "Invalid username or password."
+	ErrNickAlreadyExists           = "Nick already exists."
+	ErrAuthenticationRequired      = "Authentication required."
+	ErrMissingOrInvalidCredentials = "Missing or invalid credentials."
+	ErrMissingMetadata             = "Missing metadata."
+	ErrMissingAuthorization        = "Missing authorization header."
 )
 
 type GrpcServer struct {
@@ -41,6 +52,22 @@ func NewGrpcServer(userService *user.Service, logger *slog.Logger) *grpc.Server 
 
 	return server
 }
+
+func StartGrpcServer(userService *user.Service, logger *slog.Logger, cfg GrpcConfig) error {
+	grpcServer := NewGrpcServer(userService, logger)
+
+	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port))
+	if err != nil {
+		return fmt.Errorf("failed to listen %v", err)
+	}
+	logger.Info("Starting gRPC server", slog.String("address", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)))
+	if err := grpcServer.Serve(lis); err != nil {
+		logger.Error("Failed to serve gRPC", slog.Any("error", err))
+		return fmt.Errorf("failed to start gRPC server %v", err)
+	}
+	return nil
+}
+
 func (s *GrpcServer) AuthInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	// NOTE(zuczkows): Move to some helper with map for protected and unprotected methods when there will be more than 2 RPC methosd
 	if info.FullMethod == "/room_chat.RoomChat/RegisterProfile" {
@@ -49,17 +76,17 @@ func (s *GrpcServer) AuthInterceptor(ctx context.Context, req interface{}, info 
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return nil, status.Errorf(codes.Unauthenticated, "missing metadata")
+		return nil, status.Errorf(codes.Unauthenticated, ErrMissingMetadata)
 	}
 
 	authHeaders := md.Get("authorization")
 	if len(authHeaders) == 0 {
-		return nil, status.Errorf(codes.Unauthenticated, "missing authorization header")
+		return nil, status.Errorf(codes.Unauthenticated, ErrMissingAuthorization)
 	}
 	authHeader := authHeaders[0]
 	username, password, ok := utils.ParseBasicAuth(authHeader)
 	if !ok {
-		return nil, status.Errorf(codes.PermissionDenied, "Missing or invalid credentials.")
+		return nil, status.Errorf(codes.PermissionDenied, ErrMissingOrInvalidCredentials)
 	}
 	profile, err := s.userService.Login(ctx, username, password)
 	if err != nil {
@@ -118,7 +145,7 @@ func (s *GrpcServer) UpdateProfile(ctx context.Context, in *pb.UpdateProfileRequ
 	userID, ok := getUserIDFromContext(ctx)
 	if !ok {
 		s.logger.Error("No authenticated user in context")
-		return nil, status.Errorf(codes.Unauthenticated, "authentication required")
+		return nil, status.Errorf(codes.Unauthenticated, ErrAuthenticationRequired)
 	}
 	req := user.UpdateUserRequest{
 		Nick: in.Nick,
@@ -135,6 +162,6 @@ func (s *GrpcServer) UpdateProfile(ctx context.Context, in *pb.UpdateProfileRequ
 		}
 	}
 
-	s.logger.Info("Profile updated successfully via gRPC", slog.Int64("userID", userID))
+	s.logger.Debug("Profile updated successfully via gRPC", slog.Int64("userID", userID))
 	return &pb.Empty{}, nil
 }

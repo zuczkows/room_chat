@@ -99,7 +99,7 @@ func TestGrpc(t *testing.T) {
 		}
 		_, err := client.UpdateProfile(context.Background(), req)
 		require.Error(t, err)
-		require.ErrorContains(t, err, "missing authorization header")
+		require.ErrorContains(t, err, server.ErrMissingAuthorization)
 		require.Equal(t, codes.Unauthenticated, status.Code(err))
 	})
 
