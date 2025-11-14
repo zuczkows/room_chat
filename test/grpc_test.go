@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"log/slog"
 	"net"
 	"os"
@@ -40,21 +39,16 @@ func TestGrpc(t *testing.T) {
 	grpcServer := server.NewGrpcServer(userService, logger)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", grpcPort))
-	if err != nil {
-		logger.Error("Failed to listen", slog.Any("error", err))
-	}
+	require.NoError(t, err)
 	logger.Info("Starting gRPC server", slog.String("address", ":50051"))
 	go func() {
-		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatalf("failed to serve: %v", err)
-		}
+		err := grpcServer.Serve(lis)
+		require.NoError(t, err)
 	}()
 	time.Sleep(100 * time.Millisecond)
 
 	grpcConn, err := grpc.NewClient(fmt.Sprintf("%s:%s", grpcAddr, grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Fatalf("Failed to connect: %v\n", err)
-	}
+	require.NoError(t, err)
 	defer grpcConn.Close()
 
 	client := pb.NewRoomChatClient(grpcConn)
