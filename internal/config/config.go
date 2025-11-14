@@ -42,6 +42,7 @@ type Config struct {
 	Server   ServerConfig   `json:"server"`
 	Logging  LoggingConfig  `json:"logging"`
 	Database DatabaseConfig `json:"database"`
+	GRPC     GrpcConfig     `json:"grpc"`
 }
 
 type ServerConfig struct {
@@ -56,6 +57,11 @@ type DatabaseConfig struct {
 	Password Secret `json:"password"`
 	DbName   string `json:"dbname"`
 	SslMode  string `json:"sslmode"`
+}
+
+type GrpcConfig struct {
+	Host string `json:"hist"`
+	Port int    `json:"port"`
 }
 
 type LoggingConfig struct {
