@@ -71,9 +71,7 @@ func TestGrpc(t *testing.T) {
 			Nick:     "test-grpc",
 		}
 		_, err := client.RegisterProfile(context.Background(), req)
-		require.Error(t, err)
-		require.ErrorContains(t, err, server.ErrUsernameNickTaken)
-		require.Equal(t, codes.AlreadyExists, status.Code(err))
+		AssertGrpcError(t, err, server.ErrUsernameNickTaken, codes.AlreadyExists)
 	})
 
 	t.Run("missing required argument", func(t *testing.T) {
@@ -82,9 +80,7 @@ func TestGrpc(t *testing.T) {
 			Nick:     "missing-required-argument",
 		}
 		_, err := client.RegisterProfile(context.Background(), req)
-		require.Error(t, err)
-		require.ErrorContains(t, err, server.ErrUPasswordEmpty)
-		require.Equal(t, codes.InvalidArgument, status.Code(err))
+		AssertGrpcError(t, err, server.ErrUPasswordEmpty, codes.InvalidArgument)
 	})
 
 	t.Run("UpdateProfile without authorization", func(t *testing.T) {
@@ -92,9 +88,7 @@ func TestGrpc(t *testing.T) {
 			Nick: "without auth",
 		}
 		_, err := client.UpdateProfile(context.Background(), req)
-		require.Error(t, err)
-		require.ErrorContains(t, err, server.ErrMissingAuthorization)
-		require.Equal(t, codes.Unauthenticated, status.Code(err))
+		AssertGrpcError(t, err, server.ErrMissingAuthorization, codes.Unauthenticated)
 	})
 
 	t.Run("UpdateProfile with invalid credentials", func(t *testing.T) {
@@ -106,9 +100,7 @@ func TestGrpc(t *testing.T) {
 		}
 
 		_, err := client.UpdateProfile(ctx, req)
-		require.Error(t, err)
-		require.ErrorContains(t, err, server.ErrInvalidUsernameOrPassword)
-		require.Equal(t, codes.PermissionDenied, status.Code(err))
+		AssertGrpcError(t, err, server.ErrInvalidUsernameOrPassword, codes.PermissionDenied)
 	})
 	t.Run("UpdateProfile with valid credentials", func(t *testing.T) {
 		auth := "Basic " + basicAuth(testUser1.Username, testUser1.Password)
@@ -126,4 +118,16 @@ func TestGrpc(t *testing.T) {
 func basicAuth(username, password string) string {
 	auth := username + ":" + password
 	return base64.StdEncoding.EncodeToString([]byte(auth))
+}
+
+func AssertGrpcError(t *testing.T, err error, expectedMessage string, expectedCode codes.Code) {
+	t.Helper()
+	require.Error(t, err)
+	e, ok := status.FromError(err)
+	if ok {
+		require.Equal(t, expectedMessage, e.Message())
+		require.Equal(t, expectedCode, e.Code())
+	} else {
+		require.Failf(t, "error is not a gRPC error", "got: %v", err)
+	}
 }
