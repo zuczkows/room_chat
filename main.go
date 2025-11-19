@@ -54,7 +54,6 @@ func setupApp() {
 		logger.Error("Failed to create Elasticsearch client", slog.Any("error", err))
 	}
 	storage := storage.NewMessageIndexer(es, logger)
-
 	srv := server.NewServer(logger, cfg, userService, storage)
 	go srv.Run()
 	go srv.Start()
