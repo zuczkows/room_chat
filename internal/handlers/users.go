@@ -14,6 +14,7 @@ var (
 	ErrUsernameNickTaken     = errors.New("username or nickname is already taken")
 	ErrInternalServer        = errors.New("something went wrong on our side")
 	ErrMissingRequiredFields = errors.New("some required fields are missing")
+	ErrUserNameEmpty         = errors.New("username can not be empty")
 )
 
 type RegisterResponse struct {
@@ -37,6 +38,10 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		u.logger.Error("Failed to decode registration request", slog.Any("error", err))
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if req.Username == "" {
+		http.Error(w, ErrUserNameEmpty.Error(), http.StatusUnprocessableEntity)
 		return
 	}
 

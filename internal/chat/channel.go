@@ -2,8 +2,11 @@ package chat
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
+
+	"github.com/zuczkows/room-chat/internal/protocol"
 )
 
 var (
@@ -11,18 +14,25 @@ var (
 	ErrNotAMember        = errors.New("user is not a member of a channel")
 )
 
-type Channel struct {
-	name   string
-	users  map[string]struct{}
-	logger *slog.Logger
-	mu     sync.RWMutex
+// NOTE(zuczkows): I could remove interface and just passing userManager but right now it's more universal (?)
+type UserNotifier interface {
+	SendMessage(username string, message protocol.Message) error
 }
 
-func NewChannel(name string, logger *slog.Logger) *Channel {
+type Channel struct {
+	name         string
+	users        map[string]struct{}
+	logger       *slog.Logger
+	mu           sync.RWMutex
+	userNotifier UserNotifier
+}
+
+func NewChannel(name string, logger *slog.Logger, notifier UserNotifier) *Channel {
 	return &Channel{
-		name:   name,
-		logger: logger,
-		users:  make(map[string]struct{}),
+		name:         name,
+		logger:       logger,
+		users:        make(map[string]struct{}),
+		userNotifier: notifier,
 	}
 }
 
@@ -77,4 +87,48 @@ func (ch *Channel) ActiveUsersCount() int {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
 	return len(ch.users)
+}
+
+func (ch *Channel) Send(message protocol.Message) {
+	users := ch.GetUsernames()
+	for _, username := range users {
+		ch.userNotifier.SendMessage(username, message)
+	}
+}
+
+func (ch *Channel) SendWelcomeMessage(username string) {
+	joinMsg := protocol.Message{
+		Action:  protocol.MessageActionSystem,
+		Type:    protocol.MessageTypePush,
+		Channel: ch.Name(),
+		Push: &protocol.Push{
+			Content: fmt.Sprintf("%s joined the channel", username),
+		},
+	}
+	ch.Send(joinMsg)
+}
+
+func (ch *Channel) SendLeaveMessage(username string) {
+	leaveMsg := protocol.Message{
+		Action:  protocol.MessageActionSystem,
+		Type:    protocol.MessageTypePush,
+		Channel: ch.Name(),
+		Push: &protocol.Push{
+			Content: fmt.Sprintf("%s left the channel", username),
+		},
+	}
+	ch.Send(leaveMsg)
+}
+
+func (ch *Channel) SendMessage(username, content string) {
+	messageToSend := protocol.Message{
+		Action:  "message",
+		Type:    protocol.MessageTypePush,
+		Channel: ch.Name(),
+		User:    username,
+		Push: &protocol.Push{
+			Content: content,
+		},
+	}
+	ch.Send(messageToSend)
 }
