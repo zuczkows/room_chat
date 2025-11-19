@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type Config struct {
@@ -17,6 +19,15 @@ type Config struct {
 }
 
 func NewPostgresConnection(cfg Config) (*sql.DB, error) {
+	if cfg.Host == "" {
+		return nil, fmt.Errorf("database host is required")
+	}
+	if cfg.User == "" {
+		return nil, fmt.Errorf("database user is required")
+	}
+	fmt.Printf("DB_HOST: %s\n", cfg.Host)
+	fmt.Printf("DB_PORT: %d\n", cfg.Port)
+	fmt.Printf("DB_USER: %s\n", cfg.User)
 	dsn := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode)
 

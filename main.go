@@ -48,11 +48,8 @@ func setupApp() {
 	userService := user.NewService(userRepo)
 
 	srv := server.NewServer(logger, cfg, userService)
-	go func() {
-		srv.Run()
-		srv.Start()
-	}()
-
+	go srv.Run()
+	go srv.Start()
 	grpcConfig := server.GrpcConfig{
 		Host: cfg.GRPC.Host,
 		Port: cfg.GRPC.Port,
