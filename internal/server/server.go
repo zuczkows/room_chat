@@ -17,6 +17,7 @@ import (
 	"github.com/zuczkows/room-chat/internal/handlers"
 	"github.com/zuczkows/room-chat/internal/middleware"
 	"github.com/zuczkows/room-chat/internal/protocol"
+	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 	"github.com/zuczkows/room-chat/internal/utils"
 )
@@ -56,9 +57,10 @@ type Server struct {
 	config          *config.Config
 	server          *http.Server
 	userService     *user.Service
+	storage         *storage.MessageIndexer
 }
 
-func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service) *Server {
+func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service, storage *storage.MessageIndexer) *Server {
 	return &Server{
 		channels:        make(map[string]*chat.Channel),
 		clients:         make(Clients),
@@ -69,6 +71,7 @@ func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Servic
 		logger:          logger,
 		config:          cfg,
 		userService:     userService,
+		storage:         storage,
 	}
 }
 
@@ -196,7 +199,7 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 	}
 	channel, exists := s.channels[message.Channel]
 	if !exists {
-		s.channels[message.Channel] = chat.NewChannel(message.Channel, s.logger, s.userManager)
+		s.channels[message.Channel] = chat.NewChannel(message.Channel, s.logger, s.userManager, s.storage)
 		channel = s.channels[message.Channel]
 		s.logger.Info("Created new channel", slog.String("channel", message.Channel))
 	}
@@ -244,8 +247,16 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 		return
 	}
 	s.sendResponse(senderClient, "message sent", message.RequestID)
-	channel.SendMessage(message.User, message.Message)
+	channel.SendMessage(message)
 	s.logger.Info("Message sent to channel", slog.String("channel", message.Channel), slog.String("user", username))
+	err := s.storage.IndexWSMessage(message)
+	if err != nil {
+		// NOTE(zuczkows): Perhaps some retry logic could be applied here - for now just log warning
+		s.logger.Warn("failed to index message",
+			slog.String("id", message.ID),
+			slog.Any("error", err),
+		)
+	}
 }
 
 func (s *Server) handleLeaveChannel(message protocol.Message) {

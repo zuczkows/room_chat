@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/elastic/go-elasticsearch/v7"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/database"
 	"github.com/zuczkows/room-chat/internal/server"
+	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -47,7 +49,13 @@ func setupApp() {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 
-	srv := server.NewServer(logger, cfg, userService)
+	es, err := elasticsearch.NewDefaultClient()
+	if err != nil {
+		logger.Error("Failed to create Elasticsearch client", slog.Any("error", err))
+	}
+	storage := storage.NewMessageIndexer(es, logger)
+
+	srv := server.NewServer(logger, cfg, userService, storage)
 	go srv.Run()
 	go srv.Start()
 	grpcConfig := server.GrpcConfig{

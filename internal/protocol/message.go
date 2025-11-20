@@ -1,6 +1,8 @@
 package protocol
 
 import (
+	"time"
+
 	"github.com/go-playground/validator/v10"
 )
 
@@ -25,12 +27,14 @@ const (
 var validate = validator.New()
 
 type Message struct {
+	ID        string        `json:"message_id,omitempty"`
 	Action    MessageAction `json:"action" validate:"required,oneof=join leave message login"`
 	Type      MessageType   `json:"type,omitempty"`
 	ClientID  string        `json:"-"`
 	User      string        `json:"user,omitempty"`
 	RequestID string        `json:"request_id,omitempty"`
 	Channel   string        `json:"channel,omitempty"`
+	CreatedAt time.Time     `json:"created_at,omitempty"`
 	*Response `json:"response,omitempty"`
 	*Push     `json:"push,omitempty"`
 	Request

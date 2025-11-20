@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/zuczkows/room-chat/internal/protocol"
+	"github.com/zuczkows/room-chat/internal/storage"
 )
 
 var (
@@ -25,14 +26,16 @@ type Channel struct {
 	logger       *slog.Logger
 	mu           sync.RWMutex
 	userNotifier UserNotifier
+	storage      *storage.MessageIndexer
 }
 
-func NewChannel(name string, logger *slog.Logger, notifier UserNotifier) *Channel {
+func NewChannel(name string, logger *slog.Logger, notifier UserNotifier, storage *storage.MessageIndexer) *Channel {
 	return &Channel{
 		name:         name,
 		logger:       logger,
 		users:        make(map[string]struct{}),
 		userNotifier: notifier,
+		storage:      storage,
 	}
 }
 
@@ -120,15 +123,16 @@ func (ch *Channel) SendLeaveMessage(username string) {
 	ch.Send(leaveMsg)
 }
 
-func (ch *Channel) SendMessage(username, content string) {
+func (ch *Channel) SendMessage(message protocol.Message) {
 	messageToSend := protocol.Message{
 		Action:  "message",
 		Type:    protocol.MessageTypePush,
 		Channel: ch.Name(),
-		User:    username,
+		User:    message.User,
 		Push: &protocol.Push{
-			Content: content,
+			Content: message.Message,
 		},
+		CreatedAt: message.CreatedAt,
 	}
 	ch.Send(messageToSend)
 }

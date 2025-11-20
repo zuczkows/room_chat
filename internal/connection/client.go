@@ -126,7 +126,8 @@ func (c *Client) ReadMessages() {
 		}
 		message.User = c.GetUser()
 		message.ClientID = c.ConnID
-
+		message.ID = uuid.New().String()
+		message.CreatedAt = time.Now().UTC()
 		c.dispatchCh <- message
 	}
 }
