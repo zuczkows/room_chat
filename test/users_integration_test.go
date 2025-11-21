@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	"github.com/zuczkows/room-chat/internal/handlers"
 	"github.com/zuczkows/room-chat/internal/user"
 )
@@ -65,7 +66,7 @@ func TestUserHandlerNegative(t *testing.T) {
 				Password: "password2137!",
 			},
 			expectedStatus: http.StatusConflict,
-			expectedError:  handlers.ErrUsernameNickTaken.Error(),
+			expectedError:  apperrors.UsernameNickTaken,
 		},
 		{
 			name: "duplicate Nick",
@@ -75,7 +76,7 @@ func TestUserHandlerNegative(t *testing.T) {
 				Password: "password123",
 			},
 			expectedStatus: http.StatusConflict,
-			expectedError:  handlers.ErrUsernameNickTaken.Error(),
+			expectedError:  apperrors.UsernameNickTaken,
 		},
 		{
 			name: "missing required fields",
@@ -85,7 +86,7 @@ func TestUserHandlerNegative(t *testing.T) {
 				Password: "password123",
 			},
 			expectedStatus: http.StatusUnprocessableEntity,
-			expectedError:  handlers.ErrUserNameEmpty.Error(),
+			expectedError:  apperrors.UserNameEmpty,
 		},
 		{
 			name:              "invalid JSON",

@@ -21,9 +21,15 @@ import (
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
+const (
+	grpcAddr = "0.0.0.0"
+	grpcPort = 50051
+)
+
 var (
 	userService *user.Service
 	db          *sql.DB
+	grpcErrCh   <-chan error
 )
 
 func TestMain(m *testing.M) {
@@ -36,8 +42,10 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	defer cleanup()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	userService = SetupServer(db, logger)
+	_, grpcErrCh = SetupGrpc(logger)
 
-	userService = SetupServer(db)
 	exitCode := m.Run()
 	os.Exit(exitCode)
 }
@@ -82,10 +90,9 @@ func SetupDB() (*sql.DB, func(), error) {
 	}, nil
 }
 
-func SetupServer(db *sql.DB) *user.Service {
+func SetupServer(db *sql.DB, logger *slog.Logger) *user.Service {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
 	cfg := &config.Config{
 		Server: config.ServerConfig{
@@ -103,4 +110,21 @@ func SetupServer(db *sql.DB) *user.Service {
 
 	time.Sleep(time.Millisecond * 20)
 	return userService
+}
+
+func SetupGrpc(logger *slog.Logger) (*server.GrpcServer, <-chan error) {
+	grpcServer := server.NewGrpcServer(userService, logger)
+
+	errCh := make(chan error, 1)
+
+	go func() {
+		fmt.Printf("Starting gRPC server address: %s, port: %d", grpcAddr, grpcPort)
+		grpcConfig := server.GrpcConfig{
+			Host: grpcAddr,
+			Port: grpcPort,
+		}
+		errCh <- grpcServer.Start(grpcConfig)
+	}()
+
+	return grpcServer, errCh
 }

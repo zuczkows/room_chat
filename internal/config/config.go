@@ -60,7 +60,7 @@ type DatabaseConfig struct {
 }
 
 type GrpcConfig struct {
-	Host string `json:"hist"`
+	Host string `json:"host"`
 	Port int    `json:"port"`
 }
 
