@@ -61,7 +61,8 @@ func setupApp() {
 		Host: cfg.GRPC.Host,
 		Port: cfg.GRPC.Port,
 	}
-	if err := server.StartGrpcServer(userService, logger, grpcConfig); err != nil {
+	grpcServer := server.NewGrpcServer(userService, logger)
+	if err := grpcServer.Start(grpcConfig); err != nil {
 		logger.Error("Failed to serve gRPC", slog.Any("error", err))
 		os.Exit(1)
 	}

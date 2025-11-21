@@ -6,11 +6,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log/slog"
-	"net"
-	"os"
 	"testing"
-	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -20,34 +16,19 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/zuczkows/room-chat/internal/server"
-	"github.com/zuczkows/room-chat/internal/user"
+	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	pb "github.com/zuczkows/room-chat/protobuf"
 )
 
-const (
-	grpcAddr = "0.0.0.0"
-	grpcPort = "50051"
-)
-
 func TestGrpc(t *testing.T) {
-	userRepo := user.NewPostgresRepository(db)
-	userService := user.NewService(userRepo)
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	select {
+	case err := <-grpcErrCh:
+		t.Fatalf("gRPC server failed to start: %v", err)
+	default:
+	}
 	testUser1 := CreateTestUser1(t, userService)
 
-	grpcServer := server.NewGrpcServer(userService, logger)
-
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", grpcPort))
-	require.NoError(t, err)
-	logger.Info("Starting gRPC server", slog.String("address", ":50051"))
-	go func() {
-		err := grpcServer.Serve(lis)
-		require.NoError(t, err)
-	}()
-	time.Sleep(100 * time.Millisecond)
-
-	grpcConn, err := grpc.NewClient(fmt.Sprintf("%s:%s", grpcAddr, grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	grpcConn, err := grpc.NewClient(fmt.Sprintf("%s:%d", grpcAddr, grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	defer grpcConn.Close()
 
@@ -71,7 +52,7 @@ func TestGrpc(t *testing.T) {
 			Nick:     "test-grpc",
 		}
 		_, err := client.RegisterProfile(context.Background(), req)
-		AssertGrpcError(t, err, server.ErrUsernameNickTaken, codes.AlreadyExists)
+		AssertGrpcError(t, err, apperrors.UsernameNickTaken, codes.AlreadyExists)
 	})
 
 	t.Run("missing required argument", func(t *testing.T) {
@@ -80,7 +61,7 @@ func TestGrpc(t *testing.T) {
 			Nick:     "missing-required-argument",
 		}
 		_, err := client.RegisterProfile(context.Background(), req)
-		AssertGrpcError(t, err, server.ErrUPasswordEmpty, codes.InvalidArgument)
+		AssertGrpcError(t, err, apperrors.PasswordEmpty, codes.InvalidArgument)
 	})
 
 	t.Run("UpdateProfile without authorization", func(t *testing.T) {
@@ -88,7 +69,7 @@ func TestGrpc(t *testing.T) {
 			Nick: "without auth",
 		}
 		_, err := client.UpdateProfile(context.Background(), req)
-		AssertGrpcError(t, err, server.ErrMissingAuthorization, codes.Unauthenticated)
+		AssertGrpcError(t, err, apperrors.MissingAuthorization, codes.Unauthenticated)
 	})
 
 	t.Run("UpdateProfile with invalid credentials", func(t *testing.T) {
@@ -100,7 +81,7 @@ func TestGrpc(t *testing.T) {
 		}
 
 		_, err := client.UpdateProfile(ctx, req)
-		AssertGrpcError(t, err, server.ErrInvalidUsernameOrPassword, codes.PermissionDenied)
+		AssertGrpcError(t, err, apperrors.InvalidUsernameOrPassword, codes.PermissionDenied)
 	})
 	t.Run("UpdateProfile with valid credentials", func(t *testing.T) {
 		auth := "Basic " + basicAuth(testUser1.Username, testUser1.Password)

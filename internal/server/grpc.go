@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 
+	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	"github.com/zuczkows/room-chat/internal/user"
 	"github.com/zuczkows/room-chat/internal/utils"
 	pb "github.com/zuczkows/room-chat/protobuf"
@@ -25,46 +26,38 @@ type contextKey string
 
 const UserContextKey contextKey = "user"
 
-const (
-	ErrUsernameNickTaken           = "Username or nickname is already taken."
-	ErrInternalServer              = "Something went wrong on our side."
-	ErrMissingRequiredFields       = "Some required fields are missing."
-	ErrUserNameEmpty               = "Username can not be empty."
-	ErrUPasswordEmpty              = "Password can not be empty."
-	ErrInvalidUsernameOrPassword   = "Invalid username or password."
-	ErrNickAlreadyExists           = "Nick already exists."
-	ErrAuthenticationRequired      = "Authentication required."
-	ErrMissingOrInvalidCredentials = "Missing or invalid credentials."
-	ErrMissingMetadata             = "Missing metadata."
-	ErrMissingAuthorization        = "Missing authorization header."
-)
-
 type GrpcServer struct {
-	pb.RoomChatServer
+	pb.UnimplementedRoomChatServer
+
+	server      *grpc.Server
 	userService *user.Service
 	logger      *slog.Logger
 }
 
-func NewGrpcServer(userService *user.Service, logger *slog.Logger) *grpc.Server {
-	grpcServer := &GrpcServer{userService: userService, logger: logger}
-	server := grpc.NewServer(grpc.UnaryInterceptor(grpcServer.AuthInterceptor))
-	pb.RegisterRoomChatServer(server, grpcServer)
-
-	return server
+func NewGrpcServer(userService *user.Service, logger *slog.Logger) *GrpcServer {
+	gs := &GrpcServer{
+		userService: userService,
+		logger:      logger,
+	}
+	gs.server = grpc.NewServer(
+		grpc.UnaryInterceptor(gs.AuthInterceptor),
+	)
+	pb.RegisterRoomChatServer(gs.server, gs)
+	return gs
 }
 
-func StartGrpcServer(userService *user.Service, logger *slog.Logger, cfg GrpcConfig) error {
-	grpcServer := NewGrpcServer(userService, logger)
-
-	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port))
+func (gs *GrpcServer) Start(cfg GrpcConfig) error {
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("failed to listen %v", err)
+		return fmt.Errorf("failed to listen: %w", err)
 	}
-	logger.Info("Starting gRPC server", slog.String("address", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)))
-	if err := grpcServer.Serve(lis); err != nil {
-		logger.Error("Failed to serve gRPC", slog.Any("error", err))
-		return fmt.Errorf("failed to start gRPC server %v", err)
+	gs.logger.Info("Starting gRPC server", slog.String("address", addr))
+	if err := gs.server.Serve(lis); err != nil {
+		gs.logger.Error("failed to serve gRPC", slog.Any("error", err))
+		return fmt.Errorf("failed to start gRPC server: %w", err)
 	}
+
 	return nil
 }
 
@@ -76,30 +69,30 @@ func (s *GrpcServer) AuthInterceptor(ctx context.Context, req interface{}, info 
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return nil, status.Errorf(codes.Unauthenticated, ErrMissingMetadata)
+		return nil, status.Errorf(codes.Unauthenticated, apperrors.MissingMetadata)
 	}
 
 	authHeaders := md.Get("authorization")
 	if len(authHeaders) == 0 {
-		return nil, status.Errorf(codes.Unauthenticated, ErrMissingAuthorization)
+		return nil, status.Errorf(codes.Unauthenticated, apperrors.MissingAuthorization)
 	}
 	authHeader := authHeaders[0]
 	username, password, ok := utils.ParseBasicAuth(authHeader)
 	if !ok {
-		return nil, status.Errorf(codes.PermissionDenied, ErrMissingOrInvalidCredentials)
+		return nil, status.Errorf(codes.PermissionDenied, apperrors.MissingOrInvalidCredentials)
 	}
 	profile, err := s.userService.Login(ctx, username, password)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserNotFound):
 			s.logger.Info("login attempt with wrong username", slog.String("username", username))
-			return nil, status.Errorf(codes.PermissionDenied, ErrInvalidUsernameOrPassword)
+			return nil, status.Errorf(codes.PermissionDenied, apperrors.InvalidUsernameOrPassword)
 		case errors.Is(err, user.ErrInvalidPassword):
 			s.logger.Info("login attempt with wrong password", slog.String("username", username))
-			return nil, status.Errorf(codes.PermissionDenied, ErrInvalidUsernameOrPassword)
+			return nil, status.Errorf(codes.PermissionDenied, apperrors.InvalidUsernameOrPassword)
 		default:
 			s.logger.Error("login internal service error", slog.String("username", username), slog.Any("error", err))
-			return nil, status.Errorf(codes.Internal, ErrInternalServer)
+			return nil, status.Errorf(codes.Internal, apperrors.InternalServer)
 		}
 	}
 	newCtx := context.WithValue(ctx, UserContextKey, profile.ID)
@@ -113,10 +106,10 @@ func getUserIDFromContext(ctx context.Context) (int64, bool) {
 
 func (s *GrpcServer) RegisterProfile(ctx context.Context, in *pb.RegisterProfileRequest) (*pb.RegisterProfileResponse, error) {
 	if in.Username == "" {
-		return nil, status.Errorf(codes.InvalidArgument, ErrUserNameEmpty)
+		return nil, status.Errorf(codes.InvalidArgument, apperrors.UserNameEmpty)
 	}
 	if in.Password == "" {
-		return nil, status.Errorf(codes.InvalidArgument, ErrUPasswordEmpty)
+		return nil, status.Errorf(codes.InvalidArgument, apperrors.PasswordEmpty)
 	}
 
 	req := user.CreateUserRequest{
@@ -128,12 +121,12 @@ func (s *GrpcServer) RegisterProfile(ctx context.Context, in *pb.RegisterProfile
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
-			return nil, status.Errorf(codes.AlreadyExists, ErrUsernameNickTaken)
+			return nil, status.Errorf(codes.AlreadyExists, apperrors.UsernameNickTaken)
 		case errors.Is(err, user.ErrMissingRequiredFields):
-			return nil, status.Errorf(codes.InvalidArgument, ErrMissingRequiredFields)
+			return nil, status.Errorf(codes.InvalidArgument, apperrors.MissingRequiredFields)
 		default:
 			s.logger.Error("Registration failed", slog.Any("error", err))
-			return nil, status.Errorf(codes.Internal, ErrInternalServer)
+			return nil, status.Errorf(codes.Internal, apperrors.InternalServer)
 		}
 	}
 	return &pb.RegisterProfileResponse{
@@ -145,7 +138,7 @@ func (s *GrpcServer) UpdateProfile(ctx context.Context, in *pb.UpdateProfileRequ
 	userID, ok := getUserIDFromContext(ctx)
 	if !ok {
 		s.logger.Error("No authenticated user in context")
-		return nil, status.Errorf(codes.Unauthenticated, ErrAuthenticationRequired)
+		return nil, status.Errorf(codes.Unauthenticated, apperrors.AuthenticationRequired)
 	}
 	req := user.UpdateUserRequest{
 		Nick: in.Nick,
@@ -156,9 +149,9 @@ func (s *GrpcServer) UpdateProfile(ctx context.Context, in *pb.UpdateProfileRequ
 		s.logger.Error("Profile update failed", slog.Any("error", err))
 		switch {
 		case errors.Is(err, user.ErrNickAlreadyExists):
-			return nil, status.Errorf(codes.AlreadyExists, ErrNickAlreadyExists)
+			return nil, status.Errorf(codes.AlreadyExists, apperrors.NickAlreadyExists)
 		default:
-			return nil, status.Errorf(codes.Internal, ErrInternalServer)
+			return nil, status.Errorf(codes.Internal, apperrors.InternalServer)
 		}
 	}
 
