@@ -6,15 +6,9 @@ import (
 	"log/slog"
 	"net/http"
 
+	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	"github.com/zuczkows/room-chat/internal/middleware"
 	"github.com/zuczkows/room-chat/internal/user"
-)
-
-var (
-	ErrUsernameNickTaken     = errors.New("username or nickname is already taken")
-	ErrInternalServer        = errors.New("something went wrong on our side")
-	ErrMissingRequiredFields = errors.New("some required fields are missing")
-	ErrUserNameEmpty         = errors.New("username can not be empty")
 )
 
 type RegisterResponse struct {
@@ -41,7 +35,7 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Username == "" {
-		http.Error(w, ErrUserNameEmpty.Error(), http.StatusUnprocessableEntity)
+		http.Error(w, apperrors.UserNameEmpty, http.StatusUnprocessableEntity)
 		return
 	}
 
@@ -49,12 +43,12 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
-			http.Error(w, ErrUsernameNickTaken.Error(), http.StatusConflict)
+			http.Error(w, apperrors.UsernameNickTaken, http.StatusConflict)
 		case errors.Is(err, user.ErrMissingRequiredFields):
-			http.Error(w, ErrMissingRequiredFields.Error(), http.StatusUnprocessableEntity)
+			http.Error(w, apperrors.MissingRequiredFields, http.StatusUnprocessableEntity)
 		default:
 			u.logger.Error("Registration failed", slog.Any("error", err))
-			http.Error(w, ErrInternalServer.Error(), http.StatusInternalServerError)
+			http.Error(w, apperrors.InternalServer, http.StatusInternalServerError)
 		}
 		return
 	}
