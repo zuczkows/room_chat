@@ -1,3 +1,4 @@
+# NOTE(zuczkows): It doesn’t work at the moment. Could not figure out why. Template is from: https://docs.docker.com/guides/go-prometheus-monitoring/containerize/
 # Use the official Golang image as the base
 FROM golang:1.24-alpine AS builder
 
