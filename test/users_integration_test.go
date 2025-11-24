@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/zuczkows/room-chat/internal/chat"
 	"github.com/zuczkows/room-chat/internal/handlers"
 	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
@@ -25,7 +26,8 @@ func TestUserHandlerPositive(t *testing.T) {
 	userService := user.NewService(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	storage := storage.NewMessageIndexer(esClient, logger)
-	handler := handlers.NewUserHandler(userService, logger, storage)
+	channelManager := chat.NewChannelManager(logger)
+	handler := handlers.NewUserHandler(userService, logger, storage, channelManager)
 
 	t.Run("successful registration", func(t *testing.T) {
 		createUserRequest := user.CreateUserRequest{
@@ -51,7 +53,8 @@ func TestUserHandlerNegative(t *testing.T) {
 	userService := user.NewService(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	storage := storage.NewMessageIndexer(esClient, logger)
-	handler := handlers.NewUserHandler(userService, logger, storage)
+	channelManager := chat.NewChannelManager(logger)
+	handler := handlers.NewUserHandler(userService, logger, storage, channelManager)
 	testUser1 := CreateTestUser1(t, userService)
 
 	tests := []struct {

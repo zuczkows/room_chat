@@ -42,13 +42,12 @@ func createOriginChecker(cfg *config.Config) func(*http.Request) bool {
 	}
 }
 
-type Channels map[string]*chat.Channel
 type Clients map[string]*connection.Client
 
 type Server struct {
-	channels        Channels
 	clients         Clients
 	userManager     *user.SessionManager
+	channelManager  *chat.ChannelManager
 	register        chan *connection.Client
 	unregister      chan *connection.Client
 	dispatchMessage chan protocol.Message
@@ -62,9 +61,9 @@ type Server struct {
 
 func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service, storage *storage.MessageIndexer) *Server {
 	return &Server{
-		channels:        make(map[string]*chat.Channel),
 		clients:         make(Clients),
 		userManager:     user.NewSessionManager(logger),
+		channelManager:  chat.NewChannelManager(logger),
 		register:        make(chan *connection.Client),
 		unregister:      make(chan *connection.Client),
 		dispatchMessage: make(chan protocol.Message),
@@ -77,7 +76,7 @@ func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Servic
 
 func (s *Server) Start() {
 	mux := http.NewServeMux()
-	userHandler := handlers.NewUserHandler(s.userService, s.logger, s.storage)
+	userHandler := handlers.NewUserHandler(s.userService, s.logger, s.storage, s.channelManager)
 	authMiddleware := middleware.NewAuthMiddleware(s.userService, s.logger)
 
 	mux.HandleFunc("GET /ws", s.ServeWS)
@@ -198,14 +197,19 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		s.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
 		return
 	}
-	channel, exists := s.channels[message.Channel]
-	if !exists {
-		s.channels[message.Channel] = chat.NewChannel(message.Channel, s.logger, s.userManager, s.storage)
-		channel = s.channels[message.Channel]
-		s.logger.Info("Created new channel", slog.String("channel", message.Channel))
+	channel, err := s.channelManager.GetChannel(message.Channel)
+	if err != nil {
+		switch {
+		case errors.Is(err, chat.ErrChannelDoesNotExists):
+			channel, _ = s.channelManager.AddChannel(message.Channel, s.logger, s.userManager, s.storage)
+		default:
+			s.logger.Error("something went wrong while geting a channel from channelManager", slog.String("channel_id", message.Channel))
+			s.sendError(senderClient, "Internal server error", message.RequestID, "internal server error")
+			return
+		}
 	}
 
-	err = channel.AddUser(user.Username())
+	err = s.channelManager.AddUserToChannel(message.Channel, user.Username())
 	if err != nil {
 		s.mu.Unlock()
 		switch {
@@ -233,24 +237,22 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 		return
 	}
 
-	channel, exists := s.channels[message.Channel]
+	channel, err := s.channelManager.GetChannel(message.Channel)
 	s.mu.RUnlock()
 
-	if !exists {
-		s.sendError(senderClient,
-			fmt.Sprintf("Channel does not exist: %s", message.Channel), message.RequestID, "validation")
-		return
+	if err != nil {
+		s.sendError(senderClient, fmt.Sprintf("Channel does not exist: %s", message.Channel), message.RequestID, "validation")
 	}
 
 	username := senderClient.GetUser()
-	if !channel.HasUser(username) {
+	if !s.channelManager.IsUserAMember(message.Channel, username) {
 		s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, "forbidden")
 		return
 	}
 	s.sendResponse(senderClient, "message sent", message.RequestID)
 	channel.SendMessage(message)
 	s.logger.Info("Message sent to channel", slog.String("channel", message.Channel), slog.String("user", username))
-	err := s.storage.IndexWSMessage(message)
+	err = s.storage.IndexWSMessage(message)
 	if err != nil {
 		// NOTE(zuczkows): Perhaps some retry logic could be applied here - for now just log warning
 		s.logger.Warn("failed to index message",
@@ -270,8 +272,8 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 		return
 	}
 
-	channel, exists := s.channels[channelName]
-	if !exists {
+	channel, err := s.channelManager.GetChannel(message.Channel)
+	if err != nil {
 		s.mu.RUnlock()
 		s.sendError(senderClient, fmt.Sprintf("channel %s does not exist", channelName), message.RequestID, "validation")
 		return
@@ -305,7 +307,7 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
-		delete(s.channels, channelName)
+		s.channelManager.DeleteChannel(channelName)
 		s.logger.Info("Channel deleted", slog.String("channel", channelName))
 	}
 	s.mu.Unlock()
@@ -377,9 +379,8 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 
 	for _, channelName := range user.GetChannels() {
 		s.mu.RLock()
-		channel, exists := s.channels[channelName]
-
-		if !exists {
+		channel, err := s.channelManager.GetChannel(channelName)
+		if err != nil {
 			s.logger.Warn("lost synchronization - user belongs to non existing channel", slog.String("username", userName), slog.String("channel", channelName))
 			user.RemoveChannel(channelName)
 			continue
@@ -405,7 +406,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 func (s *Server) cleanupEmptyChannel(channelName string, channel *chat.Channel) {
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
-		delete(s.channels, channelName)
+		s.channelManager.DeleteChannel(channelName)
 		s.logger.Info("Channel deleted", slog.String("channel", channelName))
 	}
 	s.mu.Unlock()

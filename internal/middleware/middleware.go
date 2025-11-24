@@ -10,7 +10,10 @@ import (
 
 type contextKey string
 
-const UserContextKey contextKey = "user"
+const (
+	UserIDKey   contextKey = "userID"
+	UsernameKey contextKey = "username"
+)
 
 type AuthMiddleware struct {
 	userService *user.Service
@@ -41,12 +44,18 @@ func (a *AuthMiddleware) BasicAuth(next http.Handler) http.Handler {
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
-		ctx := context.WithValue(r.Context(), UserContextKey, profile.ID)
+		ctx := context.WithValue(r.Context(), UserIDKey, profile.ID)
+		ctx = context.WithValue(ctx, UsernameKey, username)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
 func GetUserIDFromContext(ctx context.Context) (int64, bool) {
-	userID, ok := ctx.Value(UserContextKey).(int64)
+	userID, ok := ctx.Value(UserIDKey).(int64)
 	return userID, ok
+}
+
+func GetUsernameFromContext(ctx context.Context) (string, bool) {
+	username, ok := ctx.Value(UsernameKey).(string)
+	return username, ok
 }

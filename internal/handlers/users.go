@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/zuczkows/room-chat/internal/chat"
 	"github.com/zuczkows/room-chat/internal/middleware"
 	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
@@ -23,16 +24,18 @@ type RegisterResponse struct {
 }
 
 type UserHandler struct {
-	userService *user.Service
-	logger      *slog.Logger
-	storage     *storage.MessageIndexer
+	userService    *user.Service
+	channelManager *chat.ChannelManager
+	logger         *slog.Logger
+	storage        *storage.MessageIndexer
 }
 
-func NewUserHandler(userService *user.Service, logger *slog.Logger, storage *storage.MessageIndexer) *UserHandler {
+func NewUserHandler(userService *user.Service, logger *slog.Logger, storage *storage.MessageIndexer, channelManager *chat.ChannelManager) *UserHandler {
 	return &UserHandler{
-		userService: userService,
-		logger:      logger,
-		storage:     storage,
+		userService:    userService,
+		channelManager: channelManager,
+		logger:         logger,
+		storage:        storage,
 	}
 }
 
@@ -99,7 +102,7 @@ func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request) {
-	_, ok := middleware.GetUserIDFromContext(r.Context())
+	authenticatedUsername, ok := middleware.GetUsernameFromContext(r.Context())
 	if !ok {
 		u.logger.Error("No authenticated user in context")
 		http.Error(w, "Authentication required", http.StatusUnauthorized)
@@ -113,7 +116,11 @@ func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Check if user is in channel from req
+	isUserAMember := u.channelManager.IsUserAMember(req.Channel, authenticatedUsername)
+	if !isUserAMember {
+		http.Error(w, "You are not a member of this channel.", http.StatusUnauthorized)
+		return
+	}
 	msgs, _ := u.storage.ListDocuments(req.Channel)
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(msgs); err != nil {

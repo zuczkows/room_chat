@@ -8,6 +8,7 @@ import (
 
 	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/storage"
+	"github.com/zuczkows/room-chat/internal/user"
 )
 
 var (
@@ -15,27 +16,22 @@ var (
 	ErrNotAMember        = errors.New("user is not a member of a channel")
 )
 
-// NOTE(zuczkows): I could remove interface and just passing userManager but right now it's more universal (?)
-type UserNotifier interface {
-	SendMessage(username string, message protocol.Message) error
-}
-
 type Channel struct {
-	name         string
-	users        map[string]struct{}
-	logger       *slog.Logger
-	mu           sync.RWMutex
-	userNotifier UserNotifier
-	storage      *storage.MessageIndexer
+	name           string
+	users          map[string]struct{}
+	logger         *slog.Logger
+	mu             sync.RWMutex
+	sessionManager *user.SessionManager
+	storage        *storage.MessageIndexer
 }
 
-func NewChannel(name string, logger *slog.Logger, notifier UserNotifier, storage *storage.MessageIndexer) *Channel {
+func NewChannel(name string, logger *slog.Logger, sessionManager *user.SessionManager, storage *storage.MessageIndexer) *Channel {
 	return &Channel{
-		name:         name,
-		logger:       logger,
-		users:        make(map[string]struct{}),
-		userNotifier: notifier,
-		storage:      storage,
+		name:           name,
+		logger:         logger,
+		users:          make(map[string]struct{}),
+		sessionManager: sessionManager,
+		storage:        storage,
 	}
 }
 
@@ -72,6 +68,9 @@ func (ch *Channel) HasUser(username string) bool {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
 	_, exists := ch.users[username]
+	if !exists {
+		ch.logger.Debug("User is not a member of a channel", slog.String("username", username))
+	}
 	return exists
 }
 
@@ -95,7 +94,7 @@ func (ch *Channel) ActiveUsersCount() int {
 func (ch *Channel) Send(message protocol.Message) {
 	users := ch.GetUsernames()
 	for _, username := range users {
-		ch.userNotifier.SendMessage(username, message)
+		ch.sessionManager.SendMessage(username, message)
 	}
 }
 
