@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
@@ -19,15 +20,29 @@ type IndexedMessage struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type EsResponse struct {
+	Hits HitsExternal `json:"hits"`
+}
+
+type HitsExternal struct {
+	Hits []Hit `json:"hits"`
+}
+
+type Hit struct {
+	Source IndexedMessage `json:"_source"`
+}
+
 type MessageIndexer struct {
 	db     *elasticsearch.Client
 	logger *slog.Logger
+	index  string
 }
 
 func NewMessageIndexer(db *elasticsearch.Client, logger *slog.Logger) *MessageIndexer {
 	return &MessageIndexer{
 		db:     db,
 		logger: logger,
+		index:  "test3",
 	}
 }
 
@@ -47,7 +62,7 @@ func (es *MessageIndexer) IndexWSMessage(message protocol.Message) error {
 	}
 
 	res, err := es.db.Index(
-		"test2",
+		es.index,
 		bytes.NewReader(body),
 		es.db.Index.WithDocumentID(msg.ID),
 	)
@@ -58,4 +73,43 @@ func (es *MessageIndexer) IndexWSMessage(message protocol.Message) error {
 	defer res.Body.Close()
 
 	return nil
+}
+
+func (es *MessageIndexer) ListDocuments(channel string) ([]IndexedMessage, error) {
+	es.logger.Debug("Calling List documents", slog.String("channel", channel))
+
+	query := fmt.Sprintf(`
+	{
+		"query": {
+			"term": {
+				"channel_id": "%s"
+			}
+		},
+		"sort": [
+			{ "created_at": { "order": "desc" } }
+		]
+	}`, channel)
+
+	res, err := es.db.Search(
+		es.db.Search.WithBody(bytes.NewBufferString(query)),
+		es.db.Search.WithIndex(es.index),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("es search error: %w", err)
+	}
+	defer res.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(res.Body)
+	var esResponse EsResponse
+
+	if err := json.Unmarshal(bodyBytes, &esResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode es response: %w", err)
+	}
+
+	messages := make([]IndexedMessage, 0, len(esResponse.Hits.Hits))
+	for _, h := range esResponse.Hits.Hits {
+		messages = append(messages, h.Source)
+	}
+
+	return messages, nil
 }

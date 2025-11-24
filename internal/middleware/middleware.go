@@ -34,15 +34,14 @@ func (a *AuthMiddleware) BasicAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		userID, err := a.userService.Login(r.Context(), username, password)
+		profile, err := a.userService.Login(r.Context(), username, password)
 		if err != nil {
 			a.logger.Debug("Authentication failed", slog.String("username", username))
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
 			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 			return
 		}
-
-		ctx := context.WithValue(r.Context(), UserContextKey, userID)
+		ctx := context.WithValue(r.Context(), UserContextKey, profile.ID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

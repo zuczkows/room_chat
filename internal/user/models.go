@@ -22,3 +22,7 @@ type CreateUserRequest struct {
 type UpdateUserRequest struct {
 	Nick string `json:"nick"`
 }
+
+type ListMessages struct {
+	Channel string `json:"channel"`
+}

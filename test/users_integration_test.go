@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/zuczkows/room-chat/internal/handlers"
+	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -23,7 +24,8 @@ func TestUserHandlerPositive(t *testing.T) {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := handlers.NewUserHandler(userService, logger)
+	storage := storage.NewMessageIndexer(esClient, logger)
+	handler := handlers.NewUserHandler(userService, logger, storage)
 
 	t.Run("successful registration", func(t *testing.T) {
 		createUserRequest := user.CreateUserRequest{
@@ -48,7 +50,8 @@ func TestUserHandlerNegative(t *testing.T) {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := handlers.NewUserHandler(userService, logger)
+	storage := storage.NewMessageIndexer(esClient, logger)
+	handler := handlers.NewUserHandler(userService, logger, storage)
 	testUser1 := CreateTestUser1(t, userService)
 
 	tests := []struct {

@@ -77,12 +77,13 @@ func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Servic
 
 func (s *Server) Start() {
 	mux := http.NewServeMux()
-	userHandler := handlers.NewUserHandler(s.userService, s.logger)
+	userHandler := handlers.NewUserHandler(s.userService, s.logger, s.storage)
 	authMiddleware := middleware.NewAuthMiddleware(s.userService, s.logger)
 
 	mux.HandleFunc("GET /ws", s.ServeWS)
 	mux.HandleFunc("POST /api/register", userHandler.HandleRegister)
 	mux.Handle("PUT /api/profile", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleUpdate)))
+	mux.Handle("GET /channel/messages", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleListMessages)))
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.config.Server.Port),
 		Handler:      mux,

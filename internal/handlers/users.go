@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/zuczkows/room-chat/internal/middleware"
+	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -24,12 +25,14 @@ type RegisterResponse struct {
 type UserHandler struct {
 	userService *user.Service
 	logger      *slog.Logger
+	storage     *storage.MessageIndexer
 }
 
-func NewUserHandler(userService *user.Service, logger *slog.Logger) *UserHandler {
+func NewUserHandler(userService *user.Service, logger *slog.Logger, storage *storage.MessageIndexer) *UserHandler {
 	return &UserHandler{
 		userService: userService,
 		logger:      logger,
+		storage:     storage,
 	}
 }
 
@@ -93,4 +96,27 @@ func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(updatedUser)
+}
+
+func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request) {
+	_, ok := middleware.GetUserIDFromContext(r.Context())
+	if !ok {
+		u.logger.Error("No authenticated user in context")
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	var req user.ListMessages
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		u.logger.Error("Failed to list messages request", slog.Any("error", err))
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Check if user is in channel from req
+	msgs, _ := u.storage.ListDocuments(req.Channel)
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(msgs); err != nil {
+		u.logger.Error("failed to encode messages response", slog.Any("error", err))
+	}
 }
