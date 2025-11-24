@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	ErrChannelDoesNotExists = errors.New("channel does not exist")
-	ErrChannelAlreadyExists = errors.New("channel already exist")
+	ErrChannelDoesNotExist = errors.New("channel does not exist")
+	ErrChannelAlreadyExist = errors.New("channel already exist")
 )
 
 type ChannelManager struct {
@@ -27,58 +27,53 @@ func NewChannelManager(logger *slog.Logger) *ChannelManager {
 	}
 }
 
-func (cm *ChannelManager) GetChannel(channelName string) (*Channel, error) {
+func (cm *ChannelManager) Get(channelName string) (*Channel, error) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
 	channel, exists := cm.channels[channelName]
 	if !exists {
-		return nil, ErrChannelDoesNotExists
+		return nil, ErrChannelDoesNotExist
 	}
 	return channel, nil
 }
-func (cm *ChannelManager) AddChannel(channelName string, logger *slog.Logger, sessionManager *user.SessionManager, storage *storage.MessageIndexer) (*Channel, error) {
+func (cm *ChannelManager) GetOrCreate(channelName string, logger *slog.Logger, sessionManager *user.SessionManager, storage *storage.MessageIndexer) *Channel {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
-	if _, exists := cm.channels[channelName]; exists {
-		return nil, ErrChannelAlreadyExists
+	if channel, exists := cm.channels[channelName]; exists {
+		return channel
 	}
 	channel := NewChannel(channelName, logger, sessionManager, storage)
 	cm.channels[channelName] = channel
 	cm.logger.Info("Created new channel", slog.String("channel", channelName))
 
-	return channel, nil
+	return channel
 }
 
 func (cm *ChannelManager) IsUserAMember(channelName, username string) bool {
-	cm.mu.RLock()
-	channel, exists := cm.channels[channelName]
-	cm.mu.RUnlock()
-	if !exists {
-		cm.logger.Debug("Channel does not exists in ChannelManager", slog.String("channel", channelName))
+	channel, err := cm.Get(channelName)
+	if err != nil {
+		cm.logger.Debug("Channel does not exist", slog.String("channel", channelName))
 		return false
 	}
 
 	return channel.HasUser(username)
 }
 
-func (cm *ChannelManager) AddUserToChannel(channelName, username string) error {
-	cm.mu.RLock()
-	channel, exists := cm.channels[channelName]
-	cm.mu.RUnlock()
-
-	if !exists {
-		return ErrChannelDoesNotExists
+func (cm *ChannelManager) AddUser(channelName, username string) error {
+	channel, err := cm.Get(channelName)
+	if err != nil {
+		return err
 	}
 	return channel.AddUser(username)
 }
 
-func (cm *ChannelManager) DeleteChannel(channelName string) error {
+func (cm *ChannelManager) Delete(channelName string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
 	if _, ok := cm.channels[channelName]; !ok {
-		return ErrChannelDoesNotExists
+		return ErrChannelDoesNotExist
 	}
 	delete(cm.channels, channelName)
 	cm.logger.Info("Deleted channel", slog.String("channel", channelName))

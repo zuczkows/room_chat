@@ -197,19 +197,9 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		s.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
 		return
 	}
-	channel, err := s.channelManager.GetChannel(message.Channel)
-	if err != nil {
-		switch {
-		case errors.Is(err, chat.ErrChannelDoesNotExists):
-			channel, _ = s.channelManager.AddChannel(message.Channel, s.logger, s.userManager, s.storage)
-		default:
-			s.logger.Error("something went wrong while geting a channel from channelManager", slog.String("channel_id", message.Channel))
-			s.sendError(senderClient, "Internal server error", message.RequestID, "internal server error")
-			return
-		}
-	}
+	channel := s.channelManager.GetOrCreate(message.Channel, s.logger, s.userManager, s.storage)
 
-	err = s.channelManager.AddUserToChannel(message.Channel, user.Username())
+	err = s.channelManager.AddUser(message.Channel, user.Username())
 	if err != nil {
 		s.mu.Unlock()
 		switch {
@@ -237,7 +227,7 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 		return
 	}
 
-	channel, err := s.channelManager.GetChannel(message.Channel)
+	channel, err := s.channelManager.Get(message.Channel)
 	s.mu.RUnlock()
 
 	if err != nil {
@@ -272,7 +262,7 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 		return
 	}
 
-	channel, err := s.channelManager.GetChannel(message.Channel)
+	channel, err := s.channelManager.Get(message.Channel)
 	if err != nil {
 		s.mu.RUnlock()
 		s.sendError(senderClient, fmt.Sprintf("channel %s does not exist", channelName), message.RequestID, "validation")
@@ -307,7 +297,7 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
-		s.channelManager.DeleteChannel(channelName)
+		s.channelManager.Delete(channelName)
 		s.logger.Info("Channel deleted", slog.String("channel", channelName))
 	}
 	s.mu.Unlock()
@@ -379,7 +369,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 
 	for _, channelName := range user.GetChannels() {
 		s.mu.RLock()
-		channel, err := s.channelManager.GetChannel(channelName)
+		channel, err := s.channelManager.Get(channelName)
 		if err != nil {
 			s.logger.Warn("lost synchronization - user belongs to non existing channel", slog.String("username", userName), slog.String("channel", channelName))
 			user.RemoveChannel(channelName)
@@ -406,8 +396,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 func (s *Server) cleanupEmptyChannel(channelName string, channel *chat.Channel) {
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
-		s.channelManager.DeleteChannel(channelName)
-		s.logger.Info("Channel deleted", slog.String("channel", channelName))
+		s.channelManager.Delete(channelName)
 	}
 	s.mu.Unlock()
 }
