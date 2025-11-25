@@ -59,11 +59,11 @@ type Server struct {
 	storage         *storage.MessageIndexer
 }
 
-func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service, storage *storage.MessageIndexer) *Server {
+func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service, storage *storage.MessageIndexer, channelManager *chat.ChannelManager) *Server {
 	return &Server{
 		clients:         make(Clients),
 		userManager:     user.NewSessionManager(logger),
-		channelManager:  chat.NewChannelManager(logger),
+		channelManager:  channelManager,
 		register:        make(chan *connection.Client),
 		unregister:      make(chan *connection.Client),
 		dispatchMessage: make(chan protocol.Message),

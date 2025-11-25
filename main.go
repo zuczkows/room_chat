@@ -8,6 +8,7 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v7"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/zuczkows/room-chat/internal/chat"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/database"
 	"github.com/zuczkows/room-chat/internal/server"
@@ -54,14 +55,15 @@ func setupApp() {
 		logger.Error("Failed to create Elasticsearch client", slog.Any("error", err))
 	}
 	storage := storage.NewMessageIndexer(es, logger)
-	srv := server.NewServer(logger, cfg, userService, storage)
+	channelManager := chat.NewChannelManager(logger)
+	srv := server.NewServer(logger, cfg, userService, storage, channelManager)
 	go srv.Run()
 	go srv.Start()
 	grpcConfig := server.GrpcConfig{
 		Host: cfg.GRPC.Host,
 		Port: cfg.GRPC.Port,
 	}
-	grpcServer := server.NewGrpcServer(userService, logger)
+	grpcServer := server.NewGrpcServer(userService, logger, storage, channelManager)
 	if err := grpcServer.Start(grpcConfig); err != nil {
 		logger.Error("Failed to serve gRPC", slog.Any("error", err))
 		os.Exit(1)

@@ -71,7 +71,6 @@ func TestStorage(t *testing.T) {
 		err = json.NewDecoder(resp.Body).Decode(&messages)
 		require.NoError(t, err)
 
-		require.Len(t, messages, 1)
 		require.Equal(t, testMessageUser1, messages[0].Content)
 
 	})

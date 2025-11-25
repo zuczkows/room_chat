@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"testing"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -17,7 +18,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	apperrors "github.com/zuczkows/room-chat/internal/errors"
+	"github.com/zuczkows/room-chat/internal/utils"
 	pb "github.com/zuczkows/room-chat/protobuf"
+	"github.com/zuczkows/room-chat/test/internal/websocket"
 )
 
 func TestGrpc(t *testing.T) {
@@ -33,6 +36,22 @@ func TestGrpc(t *testing.T) {
 	defer grpcConn.Close()
 
 	client := pb.NewRoomChatClient(grpcConn)
+
+	wsUser1, err := websocket.NewRoomChatWS("localhost:8080", time.Second*10, "test-user")
+	require.NoError(t, err)
+	defer wsUser1.Close()
+
+	accessTokenUser1 := utils.GetEncodedBase64Token(testUser1.Username, testUser1.Password)
+	_, err = wsUser1.Login(accessTokenUser1)
+	require.NoError(t, err)
+
+	channelUser1 := "channel-user-1"
+	_, err = wsUser1.Join(channelUser1)
+	require.NoError(t, err)
+
+	testMessageUser1 := "testMessageUser1"
+	_, err = wsUser1.SendMessage(testMessageUser1, channelUser1)
+	require.NoError(t, err)
 
 	t.Run("successful registration", func(t *testing.T) {
 		req := &pb.RegisterProfileRequest{
@@ -94,6 +113,30 @@ func TestGrpc(t *testing.T) {
 		_, err := client.UpdateProfile(ctx, req)
 		require.NoError(t, err)
 	})
+
+	t.Run("user can get messages from channel he belongs to", func(t *testing.T) {
+		auth := "Basic " + basicAuth(testUser1.Username, testUser1.Password)
+		ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", auth)
+
+		req := &pb.ListMessagesRequest{
+			Channel: channelUser1,
+		}
+
+		time.Sleep(time.Second * 1)
+		response, err := client.ListMessages(ctx, req)
+		require.NoError(t, err)
+
+		require.Equal(t, testMessageUser1, response.Messages[0].Content)
+	})
+
+	t.Run("ListMessages without authorization", func(t *testing.T) {
+		req := &pb.ListMessagesRequest{
+			Channel: "without auth",
+		}
+		_, err := client.ListMessages(context.Background(), req)
+		AssertGrpcError(t, err, apperrors.MissingAuthorization, codes.Unauthenticated)
+	})
+
 }
 
 func basicAuth(username, password string) string {

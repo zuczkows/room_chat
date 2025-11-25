@@ -19,6 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/elasticsearch"
 	esc "github.com/testcontainers/testcontainers-go/modules/elasticsearch"
 	pgc "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/zuczkows/room-chat/internal/chat"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/server"
 	"github.com/zuczkows/room-chat/internal/storage"
@@ -31,10 +32,12 @@ const (
 )
 
 var (
-	userService *user.Service
-	db          *sql.DB
-	esClient    *es7.Client
-	grpcErrCh   <-chan error
+	userService    *user.Service
+	esStorage      *storage.MessageIndexer
+	channelManager *chat.ChannelManager
+	db             *sql.DB
+	esClient       *es7.Client
+	grpcErrCh      <-chan error
 )
 
 func TestMain(m *testing.M) {
@@ -48,8 +51,8 @@ func TestMain(m *testing.M) {
 	}
 	defer cleanup()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	userService = SetupServer(db, logger)
-	_, grpcErrCh = SetupGrpc(logger)
+	userService, esStorage, channelManager = SetupServer(db, logger)
+	_, grpcErrCh = SetupGrpc(logger, esStorage, channelManager)
 
 	exitCode := m.Run()
 	os.Exit(exitCode)
@@ -123,10 +126,11 @@ func SetupDB() (*sql.DB, *es7.Client, func(), error) {
 	}, nil
 }
 
-func SetupServer(db *sql.DB, logger *slog.Logger) *user.Service {
+func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *storage.MessageIndexer, *chat.ChannelManager) {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+	channelManager := chat.NewChannelManager(logger)
 	storage := storage.NewMessageIndexer(esClient, logger)
 	storage.CreateIndex()
 
@@ -140,16 +144,16 @@ func SetupServer(db *sql.DB, logger *slog.Logger) *user.Service {
 		},
 	}
 
-	server := server.NewServer(logger, cfg, userService, storage)
+	server := server.NewServer(logger, cfg, userService, storage, channelManager)
 	go server.Run()
 	go server.Start()
 
 	time.Sleep(time.Millisecond * 20)
-	return userService
+	return userService, storage, channelManager
 }
 
-func SetupGrpc(logger *slog.Logger) (*server.GrpcServer, <-chan error) {
-	grpcServer := server.NewGrpcServer(userService, logger)
+func SetupGrpc(logger *slog.Logger, storage *storage.MessageIndexer, channelManager *chat.ChannelManager) (*server.GrpcServer, <-chan error) {
+	grpcServer := server.NewGrpcServer(userService, logger, storage, channelManager)
 
 	errCh := make(chan error, 1)
 

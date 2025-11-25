@@ -21,6 +21,7 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	RoomChat_RegisterProfile_FullMethodName = "/room_chat.RoomChat/RegisterProfile"
 	RoomChat_UpdateProfile_FullMethodName   = "/room_chat.RoomChat/UpdateProfile"
+	RoomChat_ListMessages_FullMethodName    = "/room_chat.RoomChat/ListMessages"
 )
 
 // RoomChatClient is the client API for RoomChat service.
@@ -29,6 +30,7 @@ const (
 type RoomChatClient interface {
 	RegisterProfile(ctx context.Context, in *RegisterProfileRequest, opts ...grpc.CallOption) (*RegisterProfileResponse, error)
 	UpdateProfile(ctx context.Context, in *UpdateProfileRequest, opts ...grpc.CallOption) (*Empty, error)
+	ListMessages(ctx context.Context, in *ListMessagesRequest, opts ...grpc.CallOption) (*ListMessagesResponse, error)
 }
 
 type roomChatClient struct {
@@ -59,12 +61,23 @@ func (c *roomChatClient) UpdateProfile(ctx context.Context, in *UpdateProfileReq
 	return out, nil
 }
 
+func (c *roomChatClient) ListMessages(ctx context.Context, in *ListMessagesRequest, opts ...grpc.CallOption) (*ListMessagesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListMessagesResponse)
+	err := c.cc.Invoke(ctx, RoomChat_ListMessages_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RoomChatServer is the server API for RoomChat service.
 // All implementations must embed UnimplementedRoomChatServer
 // for forward compatibility.
 type RoomChatServer interface {
 	RegisterProfile(context.Context, *RegisterProfileRequest) (*RegisterProfileResponse, error)
 	UpdateProfile(context.Context, *UpdateProfileRequest) (*Empty, error)
+	ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesResponse, error)
 	mustEmbedUnimplementedRoomChatServer()
 }
 
@@ -80,6 +93,9 @@ func (UnimplementedRoomChatServer) RegisterProfile(context.Context, *RegisterPro
 }
 func (UnimplementedRoomChatServer) UpdateProfile(context.Context, *UpdateProfileRequest) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateProfile not implemented")
+}
+func (UnimplementedRoomChatServer) ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListMessages not implemented")
 }
 func (UnimplementedRoomChatServer) mustEmbedUnimplementedRoomChatServer() {}
 func (UnimplementedRoomChatServer) testEmbeddedByValue()                  {}
@@ -138,6 +154,24 @@ func _RoomChat_UpdateProfile_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RoomChat_ListMessages_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListMessagesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RoomChatServer).ListMessages(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RoomChat_ListMessages_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RoomChatServer).ListMessages(ctx, req.(*ListMessagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RoomChat_ServiceDesc is the grpc.ServiceDesc for RoomChat service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +186,10 @@ var RoomChat_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateProfile",
 			Handler:    _RoomChat_UpdateProfile_Handler,
+		},
+		{
+			MethodName: "ListMessages",
+			Handler:    _RoomChat_ListMessages_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

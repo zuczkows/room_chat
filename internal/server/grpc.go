@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/zuczkows/room-chat/internal/chat"
 	apperrors "github.com/zuczkows/room-chat/internal/errors"
+	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 	"github.com/zuczkows/room-chat/internal/utils"
 	pb "github.com/zuczkows/room-chat/protobuf"
@@ -15,6 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type GrpcConfig struct {
@@ -24,20 +27,27 @@ type GrpcConfig struct {
 
 type contextKey string
 
-const UserContextKey contextKey = "user"
+const (
+	UserIDKey   contextKey = "userID"
+	UsernameKey contextKey = "username"
+)
 
 type GrpcServer struct {
 	pb.UnimplementedRoomChatServer
 
-	server      *grpc.Server
-	userService *user.Service
-	logger      *slog.Logger
+	server         *grpc.Server
+	userService    *user.Service
+	logger         *slog.Logger
+	storage        *storage.MessageIndexer
+	channelManager *chat.ChannelManager
 }
 
-func NewGrpcServer(userService *user.Service, logger *slog.Logger) *GrpcServer {
+func NewGrpcServer(userService *user.Service, logger *slog.Logger, storage *storage.MessageIndexer, channelManager *chat.ChannelManager) *GrpcServer {
 	gs := &GrpcServer{
-		userService: userService,
-		logger:      logger,
+		userService:    userService,
+		logger:         logger,
+		storage:        storage,
+		channelManager: channelManager,
 	}
 	gs.server = grpc.NewServer(
 		grpc.UnaryInterceptor(gs.AuthInterceptor),
@@ -95,13 +105,19 @@ func (s *GrpcServer) AuthInterceptor(ctx context.Context, req interface{}, info 
 			return nil, status.Errorf(codes.Internal, apperrors.InternalServer)
 		}
 	}
-	newCtx := context.WithValue(ctx, UserContextKey, profile.ID)
+	ctx = context.WithValue(ctx, UserIDKey, profile.ID)
+	newCtx := context.WithValue(ctx, UsernameKey, username)
 	return handler(newCtx, req)
 }
 
 func getUserIDFromContext(ctx context.Context) (int64, bool) {
-	userID, ok := ctx.Value(UserContextKey).(int64)
+	userID, ok := ctx.Value(UserIDKey).(int64)
 	return userID, ok
+}
+
+func GetUsernameFromContext(ctx context.Context) (string, bool) {
+	username, ok := ctx.Value(UsernameKey).(string)
+	return username, ok
 }
 
 func (s *GrpcServer) RegisterProfile(ctx context.Context, in *pb.RegisterProfileRequest) (*pb.RegisterProfileResponse, error) {
@@ -157,4 +173,38 @@ func (s *GrpcServer) UpdateProfile(ctx context.Context, in *pb.UpdateProfileRequ
 
 	s.logger.Debug("Profile updated successfully via gRPC", slog.Int64("userID", userID))
 	return &pb.Empty{}, nil
+}
+
+func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesRequest) (*pb.ListMessagesResponse, error) {
+	authenticatedUsername, ok := GetUsernameFromContext(ctx)
+	if !ok {
+		s.logger.Error("No authenticated user in context")
+		return nil, status.Errorf(codes.Unauthenticated, apperrors.AuthenticationRequired)
+	}
+	channel := in.Channel
+
+	isUserAMember := s.channelManager.IsUserAMember(channel, authenticatedUsername)
+	if !isUserAMember {
+		return nil, status.Errorf(codes.InvalidArgument, apperrors.NotMemberOfChannel)
+	}
+	msgs, err := s.storage.ListDocuments(channel)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, apperrors.InternalServer)
+	}
+
+	protoMessages := make([]*pb.Message, 0, len(msgs))
+	for _, m := range msgs {
+		protoMessages = append(protoMessages, &pb.Message{
+			Id:        m.ID,
+			ChannelId: m.ChannelID,
+			AuthorId:  m.AuthorID,
+			Content:   m.Content,
+			CreatedAt: timestamppb.New(m.CreatedAt),
+		})
+	}
+
+	return &pb.ListMessagesResponse{
+		Messages: protoMessages,
+	}, nil
+
 }
