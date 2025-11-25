@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v7"
@@ -47,6 +48,7 @@ func NewMessageIndexer(db *elasticsearch.Client, logger *slog.Logger) *MessageIn
 }
 
 func (es *MessageIndexer) IndexWSMessage(message protocol.Message) error {
+	es.logger.Debug("Calling Index WS Message", slog.String("channel", message.Channel))
 	msg := IndexedMessage{
 		ID:        message.ID,
 		ChannelID: message.Channel,
@@ -110,6 +112,35 @@ func (es *MessageIndexer) ListDocuments(channel string) ([]IndexedMessage, error
 	for _, h := range esResponse.Hits.Hits {
 		messages = append(messages, h.Source)
 	}
-
 	return messages, nil
+}
+
+// NOTE(zuczkows): Required for integration tests - without that first IndexWSMessage creates mapping automatically and ListDocuments does not work properly
+func (es *MessageIndexer) CreateIndex() error {
+	es.logger.Debug("Creating ES Index", slog.String("index", es.index))
+	query := `
+	{
+		"settings": {
+			"number_of_shards": 2,
+			"number_of_replicas": 0
+		},
+		"mappings": {
+			"properties": {
+				"message_id": { "type": "keyword" },
+				"channel_id": { "type": "keyword" },
+				"author_id":  { "type": "keyword" },
+				"content":    { "type": "text" },
+				"created_at":  { "type": "date" }
+			}
+		}
+	}`
+	res, err := es.db.Indices.Create(
+		es.index,
+		es.db.Indices.Create.WithBody(strings.NewReader(query)),
+	)
+	if err != nil {
+		return fmt.Errorf("Error creating index: %w", err)
+	}
+	defer res.Body.Close()
+	return nil
 }

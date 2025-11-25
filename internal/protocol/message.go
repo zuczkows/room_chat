@@ -34,7 +34,7 @@ type Message struct {
 	User      string        `json:"user,omitempty"`
 	RequestID string        `json:"request_id,omitempty"`
 	Channel   string        `json:"channel,omitempty"`
-	CreatedAt time.Time     `json:"created_at,omitempty"`
+	CreatedAt time.Time     `json:"created_at"`
 	*Response `json:"response,omitempty"`
 	*Push     `json:"push,omitempty"`
 	Request

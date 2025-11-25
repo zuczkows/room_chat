@@ -128,6 +128,7 @@ func SetupServer(db *sql.DB, logger *slog.Logger) *user.Service {
 	userService := user.NewService(userRepo)
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 	storage := storage.NewMessageIndexer(esClient, logger)
+	storage.CreateIndex()
 
 	cfg := &config.Config{
 		Server: config.ServerConfig{

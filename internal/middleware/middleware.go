@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -33,7 +34,7 @@ func (a *AuthMiddleware) BasicAuth(next http.Handler) http.Handler {
 		if !ok {
 			a.logger.Debug("Missing or invalid Authorization header")
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Authorization required", http.StatusUnauthorized)
+			apperrors.SendError(w, http.StatusUnauthorized, apperrors.AuthenticationRequired)
 			return
 		}
 
@@ -41,7 +42,7 @@ func (a *AuthMiddleware) BasicAuth(next http.Handler) http.Handler {
 		if err != nil {
 			a.logger.Debug("Authentication failed", slog.String("username", username))
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			apperrors.SendError(w, http.StatusUnauthorized, apperrors.InvalidCredentials)
 			return
 		}
 		ctx := context.WithValue(r.Context(), UserIDKey, profile.ID)

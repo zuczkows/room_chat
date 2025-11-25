@@ -37,11 +37,11 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	var req user.CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		u.logger.Error("Failed to decode registration request", slog.Any("error", err))
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		apperrors.SendError(w, http.StatusBadRequest, apperrors.InvalidJSON)
 		return
 	}
 	if req.Username == "" {
-		http.Error(w, apperrors.UserNameEmpty, http.StatusUnprocessableEntity)
+		apperrors.SendError(w, http.StatusUnprocessableEntity, apperrors.UserNameEmpty)
 		return
 	}
 
@@ -49,12 +49,12 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
-			http.Error(w, apperrors.UsernameNickTaken, http.StatusConflict)
+			apperrors.SendError(w, http.StatusConflict, apperrors.UsernameNickTaken)
 		case errors.Is(err, user.ErrMissingRequiredFields):
-			http.Error(w, apperrors.MissingRequiredFields, http.StatusUnprocessableEntity)
+			apperrors.SendError(w, http.StatusUnprocessableEntity, apperrors.MissingRequiredFields)
 		default:
 			u.logger.Error("Registration failed", slog.Any("error", err))
-			http.Error(w, apperrors.InternalServer, http.StatusInternalServerError)
+			apperrors.SendError(w, http.StatusInternalServerError, apperrors.InternalServer)
 		}
 		return
 	}
@@ -68,14 +68,14 @@ func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 	authenticatedUserID, ok := middleware.GetUserIDFromContext(r.Context())
 	if !ok {
 		u.logger.Error("No authenticated user in context")
-		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		apperrors.SendError(w, http.StatusUnauthorized, apperrors.AuthenticationRequired)
 		return
 	}
 
 	var req user.UpdateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		u.logger.Error("Failed to decode update request", slog.Any("error", err))
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		apperrors.SendError(w, http.StatusBadRequest, apperrors.InvalidJSON)
 		return
 	}
 
@@ -84,9 +84,9 @@ func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		u.logger.Error("Profile update failed", slog.Any("error", err))
 		switch {
 		case errors.Is(err, user.ErrNickAlreadyExists):
-			http.Error(w, user.ErrNickAlreadyExists.Error(), http.StatusConflict)
+			apperrors.SendError(w, http.StatusConflict, user.ErrNickAlreadyExists.Error())
 		default:
-			http.Error(w, user.ErrInternalServer.Error(), http.StatusInternalServerError)
+			apperrors.SendError(w, http.StatusInternalServerError, user.ErrInternalServer.Error())
 		}
 		return
 	}
@@ -99,20 +99,20 @@ func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request)
 	authenticatedUsername, ok := middleware.GetUsernameFromContext(r.Context())
 	if !ok {
 		u.logger.Error("No authenticated user in context")
-		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		apperrors.SendError(w, http.StatusUnauthorized, apperrors.AuthenticationRequired)
 		return
 	}
 
 	var req user.ListMessages
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		u.logger.Error("Failed to list messages request", slog.Any("error", err))
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		apperrors.SendError(w, http.StatusBadRequest, apperrors.InvalidJSON)
 		return
 	}
 
 	isUserAMember := u.channelManager.IsUserAMember(req.Channel, authenticatedUsername)
 	if !isUserAMember {
-		http.Error(w, "You are not a member of this channel.", http.StatusUnauthorized)
+		apperrors.SendError(w, http.StatusUnauthorized, apperrors.NotMemberOfChannel)
 		return
 	}
 	msgs, _ := u.storage.ListDocuments(req.Channel)
