@@ -53,7 +53,7 @@ func (es *MessageIndexer) IndexWSMessage(message protocol.Message) error {
 		ID:        message.ID,
 		ChannelID: message.Channel,
 		AuthorID:  message.User,
-		Content:   message.Message,
+		Content:   message.Request.Content,
 		CreatedAt: message.CreatedAt,
 	}
 

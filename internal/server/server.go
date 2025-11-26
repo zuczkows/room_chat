@@ -27,6 +27,15 @@ const (
 	WriteBufferSize = 1024
 )
 
+const (
+	MissingToken                = "Missing token."
+	ClientNotFound              = "Client not found for login."
+	MissingOrInvalidCredentials = "Missing or invalid credentials."
+	InternalServerError         = "Internal sever error."
+	AlreadyLoggedIn             = "Already logged in."
+	AlreadyInChannel            = "You are already in this channel."
+)
+
 func getUpgraderWithConfig(cfg *config.Config) websocket.Upgrader {
 	return websocket.Upgrader{
 		ReadBufferSize:  ReadBufferSize,
@@ -143,17 +152,17 @@ func (s *Server) handleLogin(message protocol.Message) {
 
 	senderClient, exists := s.clients[message.ClientID]
 	if !exists {
-		s.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
+		s.logger.Error(ClientNotFound, slog.String("clientID", message.ClientID))
 		return
 	}
-	if message.Token == "" {
-		s.sendError(senderClient, "missing token", message.RequestID, "authorization")
+	if message.Request.Token == "" {
+		s.sendError(senderClient, MissingToken, message.RequestID, protocol.AuthorizationError)
 		return
 	}
 
-	username, password, ok := utils.ParseBasicAuth(message.Token)
+	username, password, ok := utils.ParseBasicAuth(message.Request.Token)
 	if !ok {
-		s.sendError(senderClient, "missing or invalid credentials", message.RequestID, "authorization")
+		s.sendError(senderClient, MissingOrInvalidCredentials, message.RequestID, protocol.AuthorizationError)
 		return
 	}
 	profile, err := s.userService.Login(context.Background(), username, password)
@@ -162,20 +171,20 @@ func (s *Server) handleLogin(message protocol.Message) {
 		case errors.Is(err, user.ErrUserNotFound):
 			s.logger.Info("login attempt with wrong username",
 				slog.String("username", username))
-			s.sendError(senderClient, "invalid username or password", message.RequestID, "authorization")
+			s.sendError(senderClient, "invalid username or password", message.RequestID, protocol.AuthorizationError)
 		case errors.Is(err, user.ErrInvalidPassword):
 			s.logger.Info("login attempt with wrong password",
 				slog.String("username", username))
-			s.sendError(senderClient, "invalid username or password", message.RequestID, "authorization")
+			s.sendError(senderClient, "invalid username or password", message.RequestID, protocol.AuthorizationError)
 		default:
 			s.logger.Error("login internal service error", slog.String("username", username), slog.Any("error", err))
-			s.sendError(senderClient, "internal server error", message.RequestID, "internal server error")
+			s.sendError(senderClient, InternalServerError, message.RequestID, protocol.InternalServerError)
 		}
 		return
 	}
 
 	if senderClient.IsAuthenticated() {
-		s.sendError(senderClient, "Already logged in", message.RequestID, "validation")
+		s.sendError(senderClient, AlreadyLoggedIn, message.RequestID, protocol.ValidationError)
 		return
 	}
 	senderClient.Authenticate(profile.Username)
@@ -204,10 +213,10 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		s.mu.Unlock()
 		switch {
 		case errors.Is(err, chat.ErrUserAlreadyExists):
-			s.sendError(senderClient, "You are already in this channel", message.RequestID, "conflict")
+			s.sendError(senderClient, AlreadyInChannel, message.RequestID, protocol.ConflictError)
 		default:
 			s.logger.Error("unexpected error adding user to channel", slog.String("user", user.Username()), slog.String("channel", message.Channel), slog.Any("error", err))
-			s.sendError(senderClient, "Internal server error", message.RequestID, "internal server error")
+			s.sendError(senderClient, InternalServerError, message.RequestID, protocol.InternalServerError)
 		}
 		return
 	}
@@ -265,14 +274,14 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 	channel, err := s.channelManager.Get(message.Channel)
 	if err != nil {
 		s.mu.RUnlock()
-		s.sendError(senderClient, fmt.Sprintf("channel %s does not exist", channelName), message.RequestID, "validation")
+		s.sendError(senderClient, fmt.Sprintf("Channel %s does not exist", channelName), message.RequestID, protocol.ValidationError)
 		return
 	}
 	s.mu.RUnlock()
 
 	username := senderClient.GetUser()
 	if !channel.HasUser(username) {
-		s.sendError(senderClient, fmt.Sprintf("You are not a member of channel '%s'", channelName), message.RequestID, "forbidden")
+		s.sendError(senderClient, fmt.Sprintf("You are not a member of channel '%s'", channelName), message.RequestID, protocol.ForbiddenError)
 		return
 	}
 
@@ -335,14 +344,14 @@ func (s *Server) removeClient(client *connection.Client) {
 	s.logger.Info("Client unregistered", slog.String("user", userName))
 }
 
-func (s *Server) sendError(client *connection.Client, message, requestID, errType string) {
+func (s *Server) sendError(client *connection.Client, message, requestID string, errType protocol.ErrorType) {
 	msg := protocol.Message{
 		Type:      protocol.MessageTypeResponse,
 		RequestID: requestID,
 		Action:    protocol.ErrorMessage,
 		Response: &protocol.Response{
 			Success: false,
-			RespErr: &protocol.Err{
+			RespErr: &protocol.ErrorDetails{
 				Type:    errType,
 				Message: message,
 			},

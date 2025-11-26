@@ -12,7 +12,7 @@ type PushCriteria struct {
 	Content string                 `json:"content,omitempty"`
 }
 
-func WaitForPush(client *WSClient, criteria PushCriteria) func() bool {
+func PushDelivered(client *WSClient, criteria PushCriteria) func() bool {
 	return func() bool {
 		pushes := client.GetPushes(criteria.Action)
 

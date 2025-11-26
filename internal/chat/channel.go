@@ -129,7 +129,7 @@ func (ch *Channel) SendMessage(message protocol.Message) {
 		Channel: ch.Name(),
 		User:    message.User,
 		Push: &protocol.Push{
-			Content: message.Message,
+			Content: message.Request.Content,
 		},
 		CreatedAt: message.CreatedAt,
 	}

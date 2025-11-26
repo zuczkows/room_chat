@@ -8,6 +8,7 @@ import (
 
 type MessageAction string
 type MessageType string
+type ErrorType string
 
 const (
 	MesageActionJoin    MessageAction = "join"
@@ -24,6 +25,14 @@ const (
 	MessageTypeResponse MessageType = "response"
 )
 
+const (
+	AuthorizationError  ErrorType = "authorization"
+	ValidationError     ErrorType = "validation"
+	ForbiddenError      ErrorType = "forbidden"
+	InternalServerError ErrorType = "internal server error"
+	ConflictError       ErrorType = "conflict"
+)
+
 var validate = validator.New()
 
 type Message struct {
@@ -35,15 +44,15 @@ type Message struct {
 	RequestID string        `json:"request_id,omitempty"`
 	Channel   string        `json:"channel,omitempty"`
 	CreatedAt time.Time     `json:"created_at"`
-	*Response `json:"response,omitempty"`
-	*Push     `json:"push,omitempty"`
+	Response  *Response     `json:"response,omitempty"`
+	Push      *Push         `json:"push,omitempty"`
 	Request
 }
 
 type Response struct {
-	Content string `json:"content,omitempty" validate:"max=500"`
-	Success bool   `json:"success"`
-	RespErr *Err   `json:"error,omitempty"`
+	Content string        `json:"content,omitempty" validate:"max=500"`
+	Success bool          `json:"success"`
+	RespErr *ErrorDetails `json:"error,omitempty"`
 }
 
 type Push struct {
@@ -51,13 +60,13 @@ type Push struct {
 }
 
 type Request struct {
-	Message string `json:"message,omitempty" validate:"max=500"`
+	Content string `json:"content,omitempty" validate:"max=500"`
 	Token   string `json:"token,omitempty"`
 }
 
-type Err struct {
-	Type    string `json:"type"`
-	Message string `json:"message"`
+type ErrorDetails struct {
+	Type    ErrorType `json:"type"`
+	Message string    `json:"message"`
 }
 
 // note from zuczkows - I think I should manually check struct and return nice

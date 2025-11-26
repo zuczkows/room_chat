@@ -15,7 +15,7 @@ import (
 )
 
 type WSError struct {
-	Type    string
+	Type    protocol.ErrorType
 	Message string
 	Raw     json.RawMessage
 }
@@ -190,7 +190,7 @@ func (e *WSError) Error() string {
 
 func HandleWSError(response *protocol.Message) error {
 	return &WSError{
-		Type:    response.RespErr.Type,
-		Message: response.RespErr.Message,
+		Type:    response.Response.RespErr.Type,
+		Message: response.Response.RespErr.Message,
 	}
 }
