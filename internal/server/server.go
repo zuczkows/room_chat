@@ -240,12 +240,12 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 	s.mu.RUnlock()
 
 	if err != nil {
-		s.sendError(senderClient, fmt.Sprintf("Channel does not exist: %s", message.Channel), message.RequestID, "validation")
+		s.sendError(senderClient, fmt.Sprintf("Channel does not exist: %s", message.Channel), message.RequestID, protocol.ValidationError)
 	}
 
 	username := senderClient.GetUser()
 	if !s.channelManager.IsUserAMember(message.Channel, username) {
-		s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, "forbidden")
+		s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, protocol.ForbiddenError)
 		return
 	}
 	s.sendResponse(senderClient, "message sent", message.RequestID)

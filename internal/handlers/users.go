@@ -115,7 +115,11 @@ func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request)
 		apperrors.SendError(w, http.StatusUnauthorized, apperrors.NotMemberOfChannel)
 		return
 	}
-	msgs, _ := u.storage.ListDocuments(req.Channel)
+	msgs, err := u.storage.ListDocuments(req.Channel)
+	if err != nil {
+		u.logger.Error("Fetching document from ES failed", slog.Any("error", err))
+		apperrors.SendError(w, http.StatusInternalServerError, apperrors.InternalServer)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(msgs); err != nil {
 		u.logger.Error("failed to encode messages response", slog.Any("error", err))
