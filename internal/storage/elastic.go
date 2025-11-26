@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v7"
@@ -39,11 +38,11 @@ type MessageIndexer struct {
 	index  string
 }
 
-func NewMessageIndexer(db *elasticsearch.Client, logger *slog.Logger) *MessageIndexer {
+func NewMessageIndexer(db *elasticsearch.Client, logger *slog.Logger, index string) *MessageIndexer {
 	return &MessageIndexer{
 		db:     db,
 		logger: logger,
-		index:  "test3",
+		index:  index,
 	}
 }
 
@@ -136,10 +135,10 @@ func (es *MessageIndexer) CreateIndex() error {
 	}`
 	res, err := es.db.Indices.Create(
 		es.index,
-		es.db.Indices.Create.WithBody(strings.NewReader(query)),
+		es.db.Indices.Create.WithBody(bytes.NewBufferString(query)),
 	)
 	if err != nil {
-		return fmt.Errorf("Error creating index: %w", err)
+		return fmt.Errorf("error creating index: %w", err)
 	}
 	defer res.Body.Close()
 	return nil

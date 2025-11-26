@@ -50,11 +50,15 @@ func setupApp() {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 
-	es, err := elasticsearch.NewDefaultClient()
+	es, err := elasticsearch.NewClient(elasticsearch.Config{
+		Addresses: []string{
+			fmt.Sprintf("http://%s:%d", cfg.Elasticsearch.Host, cfg.Elasticsearch.Port),
+		},
+	})
 	if err != nil {
 		logger.Error("Failed to create Elasticsearch client", slog.Any("error", err))
 	}
-	storage := storage.NewMessageIndexer(es, logger)
+	storage := storage.NewMessageIndexer(es, logger, cfg.Elasticsearch.Index)
 	channelManager := chat.NewChannelManager(logger)
 	srv := server.NewServer(logger, cfg, userService, storage, channelManager)
 	go srv.Run()

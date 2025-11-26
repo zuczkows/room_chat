@@ -131,7 +131,7 @@ func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *storage.Messa
 	userService := user.NewService(userRepo)
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 	channelManager := chat.NewChannelManager(logger)
-	storage := storage.NewMessageIndexer(esClient, logger)
+	storage := storage.NewMessageIndexer(esClient, logger, "messages")
 	storage.CreateIndex()
 
 	cfg := &config.Config{

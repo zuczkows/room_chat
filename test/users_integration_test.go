@@ -18,7 +18,6 @@ import (
 	"github.com/zuczkows/room-chat/internal/chat"
 	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	"github.com/zuczkows/room-chat/internal/handlers"
-	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -26,9 +25,8 @@ func TestUserHandlerPositive(t *testing.T) {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	storage := storage.NewMessageIndexer(esClient, logger)
 	channelManager := chat.NewChannelManager(logger)
-	handler := handlers.NewUserHandler(userService, logger, storage, channelManager)
+	handler := handlers.NewUserHandler(userService, logger, esStorage, channelManager)
 
 	t.Run("successful registration", func(t *testing.T) {
 		createUserRequest := user.CreateUserRequest{
@@ -53,9 +51,8 @@ func TestUserHandlerNegative(t *testing.T) {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	storage := storage.NewMessageIndexer(esClient, logger)
 	channelManager := chat.NewChannelManager(logger)
-	handler := handlers.NewUserHandler(userService, logger, storage, channelManager)
+	handler := handlers.NewUserHandler(userService, logger, esStorage, channelManager)
 	testUser1 := CreateTestUser1(t, userService)
 
 	tests := []struct {

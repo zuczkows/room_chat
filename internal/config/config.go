@@ -39,10 +39,11 @@ func (s *Secret) String() string {
 }
 
 type Config struct {
-	Server   ServerConfig   `json:"server"`
-	Logging  LoggingConfig  `json:"logging"`
-	Database DatabaseConfig `json:"database"`
-	GRPC     GrpcConfig     `json:"grpc"`
+	Server        ServerConfig        `json:"server"`
+	Logging       LoggingConfig       `json:"logging"`
+	Database      DatabaseConfig      `json:"database"`
+	GRPC          GrpcConfig          `json:"grpc"`
+	Elasticsearch ElasticsearchConfig `json:"elasticsearch"`
 }
 
 type ServerConfig struct {
@@ -62,6 +63,12 @@ type DatabaseConfig struct {
 type GrpcConfig struct {
 	Host string `json:"host"`
 	Port int    `json:"port"`
+}
+
+type ElasticsearchConfig struct {
+	Host  string `json:"host"`
+	Port  int    `json:"port"`
+	Index string `json:"index"`
 }
 
 type LoggingConfig struct {
