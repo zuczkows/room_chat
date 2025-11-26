@@ -38,6 +38,7 @@ func setupApp() {
 		SSLMode:  cfg.Database.SslMode,
 	}
 	db, err := database.NewPostgresConnection(dbConfig)
+	logger.Info("Starting PostgresConnection", slog.String("host", cfg.Database.Host), slog.Int("port", cfg.Database.Port))
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -46,8 +47,17 @@ func setupApp() {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 
-	server := server.NewServer(logger, cfg, userService)
-	go server.Run()
-	server.Start()
+	srv := server.NewServer(logger, cfg, userService)
+	go srv.Run()
+	go srv.Start()
 
+	grpcConfig := server.GrpcConfig{
+		Host: cfg.GRPC.Host,
+		Port: cfg.GRPC.Port,
+	}
+	grpcServer := server.NewGrpcServer(userService, logger)
+	if err := grpcServer.Start(grpcConfig); err != nil {
+		logger.Error("Failed to serve gRPC", slog.Any("error", err))
+		os.Exit(1)
+	}
 }
