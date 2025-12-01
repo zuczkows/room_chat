@@ -17,7 +17,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	"github.com/zuczkows/room-chat/internal/utils"
 	pb "github.com/zuczkows/room-chat/protobuf"
 	"github.com/zuczkows/room-chat/test/internal/websocket"
@@ -71,7 +70,7 @@ func TestGrpc(t *testing.T) {
 			Nick:     "test-grpc",
 		}
 		_, err := client.RegisterProfile(context.Background(), req)
-		AssertGrpcError(t, err, apperrors.UsernameNickTaken, codes.AlreadyExists)
+		AssertGrpcError(t, err, "Username or nickname is already taken.", codes.AlreadyExists)
 	})
 
 	t.Run("missing required argument", func(t *testing.T) {
@@ -80,7 +79,7 @@ func TestGrpc(t *testing.T) {
 			Nick:     "missing-required-argument",
 		}
 		_, err := client.RegisterProfile(context.Background(), req)
-		AssertGrpcError(t, err, apperrors.PasswordEmpty, codes.InvalidArgument)
+		AssertGrpcError(t, err, "Password cannot be empty.", codes.InvalidArgument)
 	})
 
 	t.Run("UpdateProfile without authorization", func(t *testing.T) {
@@ -88,7 +87,7 @@ func TestGrpc(t *testing.T) {
 			Nick: "without auth",
 		}
 		_, err := client.UpdateProfile(context.Background(), req)
-		AssertGrpcError(t, err, apperrors.MissingAuthorization, codes.Unauthenticated)
+		AssertGrpcError(t, err, "Missing authorization header.", codes.Unauthenticated)
 	})
 
 	t.Run("UpdateProfile with invalid credentials", func(t *testing.T) {
@@ -100,7 +99,7 @@ func TestGrpc(t *testing.T) {
 		}
 
 		_, err := client.UpdateProfile(ctx, req)
-		AssertGrpcError(t, err, apperrors.InvalidUsernameOrPassword, codes.PermissionDenied)
+		AssertGrpcError(t, err, "Invalid username or password.", codes.PermissionDenied)
 	})
 	t.Run("UpdateProfile with valid credentials", func(t *testing.T) {
 		auth := "Basic " + basicAuth(testUser1.Username, testUser1.Password)
@@ -134,7 +133,7 @@ func TestGrpc(t *testing.T) {
 			Channel: "without auth",
 		}
 		_, err := client.ListMessages(context.Background(), req)
-		AssertGrpcError(t, err, apperrors.MissingAuthorization, codes.Unauthenticated)
+		AssertGrpcError(t, err, "Missing authorization header.", codes.Unauthenticated)
 	})
 
 }

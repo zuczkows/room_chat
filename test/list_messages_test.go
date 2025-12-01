@@ -3,7 +3,6 @@
 package test
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -12,12 +11,14 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 
-	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	"github.com/zuczkows/room-chat/internal/storage"
-	"github.com/zuczkows/room-chat/internal/user"
 	"github.com/zuczkows/room-chat/internal/utils"
 	"github.com/zuczkows/room-chat/test/internal/websocket"
 )
+
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
 
 func TestStorage(t *testing.T) {
 
@@ -85,11 +86,11 @@ func TestStorage(t *testing.T) {
 
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
-		var errResp apperrors.ErrorResponse
+		var errResp ErrorResponse
 		err = json.NewDecoder(resp.Body).Decode(&errResp)
 		require.NoError(t, err)
 
-		require.Equal(t, apperrors.NotMemberOfChannel, errResp.Error)
+		require.Equal(t, "You are not a member of this channel.", errResp.Error)
 	})
 
 	t.Run("user can't get messages with wrong token", func(t *testing.T) {
@@ -102,11 +103,11 @@ func TestStorage(t *testing.T) {
 
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
-		var errResp apperrors.ErrorResponse
+		var errResp ErrorResponse
 		err = json.NewDecoder(resp.Body).Decode(&errResp)
 		require.NoError(t, err)
 
-		require.Equal(t, apperrors.AuthenticationRequired, errResp.Error)
+		require.Equal(t, "Authentication required.", errResp.Error)
 	})
 
 	t.Run("user can't get messages without authorization header", func(t *testing.T) {
@@ -118,23 +119,20 @@ func TestStorage(t *testing.T) {
 
 		require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
-		var errResp apperrors.ErrorResponse
+		var errResp ErrorResponse
 		err = json.NewDecoder(resp.Body).Decode(&errResp)
 		require.NoError(t, err)
 
-		require.Equal(t, apperrors.AuthenticationRequired, errResp.Error)
+		require.Equal(t, "Authentication required.", errResp.Error)
 	})
 
 }
 
 func prepareListMessagesRequestWithoutAuthHeader(t *testing.T, channelName string) *http.Request {
-	body := user.ListMessages{
-		Channel: channelName,
-	}
-	bodyBytes, err := json.Marshal(body)
+	request, err := http.NewRequest(http.MethodGet, "http://localhost:8080/channel/messages", nil)
 	require.NoError(t, err)
-	request, err := http.NewRequest(http.MethodPost, "http://localhost:8080/channel/messages", bytes.NewReader(bodyBytes))
-	require.NoError(t, err)
-	request.Header.Set("Content-Type", "application/json")
+	q := request.URL.Query()
+	q.Add("channel", channelName)
+	request.URL.RawQuery = q.Encode()
 	return request
 }

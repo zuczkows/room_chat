@@ -1,4 +1,4 @@
-package handlers
+package server
 
 import (
 	"encoding/json"
@@ -6,25 +6,21 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/zuczkows/room-chat/internal/chat"
+	"github.com/zuczkows/room-chat/internal/channels"
 	apperrors "github.com/zuczkows/room-chat/internal/errors"
-	"github.com/zuczkows/room-chat/internal/middleware"
+	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
-type RegisterResponse struct {
-	ID int64 `json:"id"`
-}
-
 type UserHandler struct {
 	userService    *user.Service
-	channelManager *chat.ChannelManager
+	channelManager *channels.ChannelManager
 	logger         *slog.Logger
 	storage        *storage.MessageIndexer
 }
 
-func NewUserHandler(userService *user.Service, logger *slog.Logger, storage *storage.MessageIndexer, channelManager *chat.ChannelManager) *UserHandler {
+func NewUserHandler(userService *user.Service, logger *slog.Logger, storage *storage.MessageIndexer, channelManager *channels.ChannelManager) *UserHandler {
 	return &UserHandler{
 		userService:    userService,
 		channelManager: channelManager,
@@ -34,14 +30,14 @@ func NewUserHandler(userService *user.Service, logger *slog.Logger, storage *sto
 }
 
 func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
-	var req user.CreateUserRequest
+	var req protocol.CreateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		u.logger.Error("Failed to decode registration request", slog.Any("error", err))
-		apperrors.SendError(w, http.StatusBadRequest, apperrors.InvalidJSON)
+		apperrors.SendError(w, http.StatusBadRequest, protocol.InvalidJSON)
 		return
 	}
 	if req.Username == "" {
-		apperrors.SendError(w, http.StatusUnprocessableEntity, apperrors.UserNameEmpty)
+		apperrors.SendError(w, http.StatusUnprocessableEntity, protocol.UserNameEmpty)
 		return
 	}
 
@@ -49,33 +45,33 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
-			apperrors.SendError(w, http.StatusConflict, apperrors.UsernameNickTaken)
+			apperrors.SendError(w, http.StatusConflict, protocol.UsernameNickTaken)
 		case errors.Is(err, user.ErrMissingRequiredFields):
-			apperrors.SendError(w, http.StatusUnprocessableEntity, apperrors.MissingRequiredFields)
+			apperrors.SendError(w, http.StatusUnprocessableEntity, protocol.MissingRequiredFields)
 		default:
 			u.logger.Error("Registration failed", slog.Any("error", err))
-			apperrors.SendError(w, http.StatusInternalServerError, apperrors.InternalServer)
+			apperrors.SendError(w, http.StatusInternalServerError, protocol.InternalServer)
 		}
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(RegisterResponse{ID: userProfileID})
+	json.NewEncoder(w).Encode(protocol.RegisterResponse{ID: userProfileID})
 }
 
 func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
-	authenticatedUserID, ok := middleware.GetUserIDFromContext(r.Context())
-	if !ok {
+	authenticatedUserID, err := GetUserIDFromContext(r.Context())
+	if err != nil {
 		u.logger.Error("No authenticated user in context")
-		apperrors.SendError(w, http.StatusUnauthorized, apperrors.AuthenticationRequired)
+		apperrors.SendError(w, http.StatusInternalServerError, protocol.InternalServer)
 		return
 	}
 
-	var req user.UpdateUserRequest
+	var req protocol.UpdateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		u.logger.Error("Failed to decode update request", slog.Any("error", err))
-		apperrors.SendError(w, http.StatusBadRequest, apperrors.InvalidJSON)
+		apperrors.SendError(w, http.StatusBadRequest, protocol.InvalidJSON)
 		return
 	}
 
@@ -84,9 +80,9 @@ func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		u.logger.Error("Profile update failed", slog.Any("error", err))
 		switch {
 		case errors.Is(err, user.ErrNickAlreadyExists):
-			apperrors.SendError(w, http.StatusConflict, user.ErrNickAlreadyExists.Error())
+			apperrors.SendError(w, http.StatusConflict, protocol.NickAlreadyExists)
 		default:
-			apperrors.SendError(w, http.StatusInternalServerError, user.ErrInternalServer.Error())
+			apperrors.SendError(w, http.StatusInternalServerError, protocol.InternalServer)
 		}
 		return
 	}
@@ -96,29 +92,31 @@ func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request) {
-	authenticatedUsername, ok := middleware.GetUsernameFromContext(r.Context())
-	if !ok {
+	authenticatedUsername, err := GetUsernameFromContext(r.Context())
+	if err != nil {
 		u.logger.Error("No authenticated user in context")
-		apperrors.SendError(w, http.StatusUnauthorized, apperrors.AuthenticationRequired)
+		apperrors.SendError(w, http.StatusInternalServerError, protocol.InternalServer)
 		return
 	}
 
-	var req user.ListMessages
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		u.logger.Error("Failed to list messages request", slog.Any("error", err))
-		apperrors.SendError(w, http.StatusBadRequest, apperrors.InvalidJSON)
+	channel := r.URL.Query().Get("channel")
+	if channel == "" {
+		apperrors.SendError(w, http.StatusBadRequest, protocol.MissingRequiredFields)
 		return
+	}
+	req := protocol.ListMessages{
+		Channel: channel,
 	}
 
 	isUserAMember := u.channelManager.IsUserAMember(req.Channel, authenticatedUsername)
 	if !isUserAMember {
-		apperrors.SendError(w, http.StatusUnauthorized, apperrors.NotMemberOfChannel)
+		apperrors.SendError(w, http.StatusUnauthorized, protocol.NotMemberOfChannel)
 		return
 	}
 	msgs, err := u.storage.ListDocuments(req.Channel)
 	if err != nil {
 		u.logger.Error("Fetching document from ES failed", slog.Any("error", err))
-		apperrors.SendError(w, http.StatusInternalServerError, apperrors.InternalServer)
+		apperrors.SendError(w, http.StatusInternalServerError, protocol.InternalServer)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(msgs); err != nil {

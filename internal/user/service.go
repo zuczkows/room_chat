@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/zuczkows/room-chat/internal/protocol"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -15,7 +16,7 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) Register(ctx context.Context, req CreateUserRequest) (int64, error) {
+func (s *Service) Register(ctx context.Context, req protocol.CreateUserRequest) (int64, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return 0, err
@@ -44,6 +45,6 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Profil
 	return user, nil
 }
 
-func (s *Service) UpdateProfile(ctx context.Context, userID int64, req UpdateUserRequest) (*Profile, error) {
+func (s *Service) UpdateProfile(ctx context.Context, userID int64, req protocol.UpdateUserRequest) (*Profile, error) {
 	return s.repo.Update(ctx, userID, req)
 }

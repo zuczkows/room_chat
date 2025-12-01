@@ -8,7 +8,7 @@ import (
 
 	"github.com/elastic/go-elasticsearch/v7"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/zuczkows/room-chat/internal/chat"
+	"github.com/zuczkows/room-chat/internal/channels"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/database"
 	"github.com/zuczkows/room-chat/internal/server"
@@ -56,10 +56,10 @@ func setupApp() {
 		},
 	})
 	if err != nil {
-		logger.Error("Failed to create Elasticsearch client", slog.Any("error", err))
+		log.Fatalf("Failed to create Elasticsearch client: %v", err)
 	}
 	storage := storage.NewMessageIndexer(es, logger, cfg.Elasticsearch.Index)
-	channelManager := chat.NewChannelManager(logger)
+	channelManager := channels.NewChannelManager(logger)
 	srv := server.NewServer(logger, cfg, userService, storage, channelManager)
 	go srv.Run()
 	go srv.Start()

@@ -11,11 +11,9 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/zuczkows/room-chat/internal/chat"
+	"github.com/zuczkows/room-chat/internal/channels"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/connection"
-	"github.com/zuczkows/room-chat/internal/handlers"
-	"github.com/zuczkows/room-chat/internal/middleware"
 	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
@@ -56,7 +54,7 @@ type Clients map[string]*connection.Client
 type Server struct {
 	clients         Clients
 	userManager     *user.SessionManager
-	channelManager  *chat.ChannelManager
+	channelManager  *channels.ChannelManager
 	register        chan *connection.Client
 	unregister      chan *connection.Client
 	dispatchMessage chan protocol.Message
@@ -68,7 +66,7 @@ type Server struct {
 	storage         *storage.MessageIndexer
 }
 
-func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service, storage *storage.MessageIndexer, channelManager *chat.ChannelManager) *Server {
+func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service, storage *storage.MessageIndexer, channelManager *channels.ChannelManager) *Server {
 	return &Server{
 		clients:         make(Clients),
 		userManager:     user.NewSessionManager(logger),
@@ -85,13 +83,13 @@ func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Servic
 
 func (s *Server) Start() {
 	mux := http.NewServeMux()
-	userHandler := handlers.NewUserHandler(s.userService, s.logger, s.storage, s.channelManager)
-	authMiddleware := middleware.NewAuthMiddleware(s.userService, s.logger)
+	userHandler := NewUserHandler(s.userService, s.logger, s.storage, s.channelManager)
+	authMiddleware := NewAuthMiddleware(s.userService, s.logger)
 
 	mux.HandleFunc("GET /ws", s.ServeWS)
 	mux.HandleFunc("POST /api/register", userHandler.HandleRegister)
 	mux.Handle("PUT /api/profile", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleUpdate)))
-	mux.Handle("POST /channel/messages", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleListMessages)))
+	mux.Handle("GET /channel/messages", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleListMessages)))
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.config.Server.Port),
 		Handler:      mux,
@@ -212,7 +210,7 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 	if err != nil {
 		s.mu.Unlock()
 		switch {
-		case errors.Is(err, chat.ErrUserAlreadyExists):
+		case errors.Is(err, channels.ErrUserAlreadyExists):
 			s.sendError(senderClient, AlreadyInChannel, message.RequestID, protocol.ConflictError)
 		default:
 			s.logger.Error("unexpected error adding user to channel", slog.String("user", user.Username()), slog.String("channel", message.Channel), slog.Any("error", err))
@@ -248,17 +246,18 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 		s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, protocol.ForbiddenError)
 		return
 	}
-	s.sendResponse(senderClient, "message sent", message.RequestID)
-	channel.SendMessage(message)
-	s.logger.Info("Message sent to channel", slog.String("channel", message.Channel), slog.String("user", username))
-	err = s.storage.IndexWSMessage(message)
+	err = s.storage.IndexMessage(message)
 	if err != nil {
-		// NOTE(zuczkows): Perhaps some retry logic could be applied here - for now just log warning
 		s.logger.Warn("failed to index message",
 			slog.String("id", message.ID),
 			slog.Any("error", err),
 		)
+		s.sendError(senderClient, InternalServerError, message.RequestID, protocol.InternalServerError)
+		return
 	}
+	s.sendResponse(senderClient, "message sent", message.RequestID)
+	channel.SendMessage(message)
+	s.logger.Info("Message sent to channel", slog.String("channel", message.Channel), slog.String("user", username))
 }
 
 func (s *Server) handleLeaveChannel(message protocol.Message) {
@@ -287,7 +286,7 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 
 	if err := channel.RemoveUser(username); err != nil {
 		switch {
-		case errors.Is(err, chat.ErrNotAMember):
+		case errors.Is(err, channels.ErrNotAMember):
 			s.logger.Error("trying to remove non member from a channel", slog.String("user", username), slog.String("channel", channelName))
 			return
 		default:
@@ -386,7 +385,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 		}
 		if err := channel.RemoveUser(userName); err != nil {
 			switch {
-			case errors.Is(err, chat.ErrNotAMember):
+			case errors.Is(err, channels.ErrNotAMember):
 				s.logger.Warn("trying to remove non member from a channel", slog.String("user", userName), slog.String("channel", channelName))
 			default:
 				s.logger.Error("unexpected error while removing member", slog.String("user", userName), slog.Any("error", err))
@@ -402,7 +401,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 	}
 }
 
-func (s *Server) cleanupEmptyChannel(channelName string, channel *chat.Channel) {
+func (s *Server) cleanupEmptyChannel(channelName string, channel *channels.Channel) {
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
 		s.channelManager.Delete(channelName)

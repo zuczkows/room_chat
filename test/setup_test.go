@@ -19,7 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/elasticsearch"
 	esc "github.com/testcontainers/testcontainers-go/modules/elasticsearch"
 	pgc "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/zuczkows/room-chat/internal/chat"
+	"github.com/zuczkows/room-chat/internal/channels"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/server"
 	"github.com/zuczkows/room-chat/internal/storage"
@@ -34,7 +34,7 @@ const (
 var (
 	userService    *user.Service
 	esStorage      *storage.MessageIndexer
-	channelManager *chat.ChannelManager
+	channelManager *channels.ChannelManager
 	db             *sql.DB
 	esClient       *es7.Client
 	grpcErrCh      <-chan error
@@ -126,11 +126,11 @@ func SetupDB() (*sql.DB, *es7.Client, func(), error) {
 	}, nil
 }
 
-func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *storage.MessageIndexer, *chat.ChannelManager) {
+func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *storage.MessageIndexer, *channels.ChannelManager) {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
-	channelManager := chat.NewChannelManager(logger)
+	channelManager := channels.NewChannelManager(logger)
 	storage := storage.NewMessageIndexer(esClient, logger, "messages")
 	storage.CreateIndex()
 
@@ -152,7 +152,7 @@ func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *storage.Messa
 	return userService, storage, channelManager
 }
 
-func SetupGrpc(logger *slog.Logger, storage *storage.MessageIndexer, channelManager *chat.ChannelManager) (*server.GrpcServer, <-chan error) {
+func SetupGrpc(logger *slog.Logger, storage *storage.MessageIndexer, channelManager *channels.ChannelManager) (*server.GrpcServer, <-chan error) {
 	grpcServer := server.NewGrpcServer(userService, logger, storage, channelManager)
 
 	errCh := make(chan error, 1)

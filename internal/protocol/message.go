@@ -9,6 +9,7 @@ import (
 type MessageAction string
 type MessageType string
 type ErrorType string
+type UserMessage string
 
 const (
 	MesageActionJoin    MessageAction = "join"
@@ -31,6 +32,24 @@ const (
 	ForbiddenError      ErrorType = "forbidden"
 	InternalServerError ErrorType = "internal server error"
 	ConflictError       ErrorType = "conflict"
+)
+
+const (
+	UsernameNickTaken           UserMessage = "Username or nickname is already taken."
+	InternalServer              UserMessage = "Something went wrong on our side."
+	MissingRequiredFields       UserMessage = "Some required fields are missing."
+	UserNameEmpty               UserMessage = "Username cannot be empty."
+	PasswordEmpty               UserMessage = "Password cannot be empty."
+	InvalidUsernameOrPassword   UserMessage = "Invalid username or password."
+	NickAlreadyExists           UserMessage = "Nick already exists."
+	AuthenticationRequired      UserMessage = "Authentication required."
+	MissingOrInvalidCredentials UserMessage = "Missing or invalid credentials."
+	MissingMetadata             UserMessage = "Missing metadata."
+	MissingAuthorization        UserMessage = "Missing authorization header."
+	NotMemberOfChannel          UserMessage = "You are not a member of this channel."
+	InvalidJSON                 UserMessage = "Invalid JSON."
+	AuthorizationRequired       UserMessage = "Authorization required."
+	InvalidCredentials          UserMessage = "Invalid credentials."
 )
 
 var validate = validator.New()
@@ -67,6 +86,26 @@ type Request struct {
 type ErrorDetails struct {
 	Type    ErrorType `json:"type"`
 	Message string    `json:"message"`
+}
+
+type RegisterResponse struct {
+	ID int64 `json:"id"`
+}
+
+// no email verification for this app so no email in struct
+type CreateUserRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Nick     string `json:"nick"`
+}
+
+// only nick can be updated at this point
+type UpdateUserRequest struct {
+	Nick string `json:"nick"`
+}
+
+type ListMessages struct {
+	Channel string `json:"channel"`
 }
 
 // note from zuczkows - I think I should manually check struct and return nice

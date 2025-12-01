@@ -1,19 +1,21 @@
-package middleware
+package server
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 
 	apperrors "github.com/zuczkows/room-chat/internal/errors"
+	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
 type contextKey string
 
 const (
-	UserIDKey   contextKey = "userID"
-	UsernameKey contextKey = "username"
+	userIDKey   contextKey = "userID"
+	usernameKey contextKey = "username"
 )
 
 type AuthMiddleware struct {
@@ -34,7 +36,7 @@ func (a *AuthMiddleware) BasicAuth(next http.Handler) http.Handler {
 		if !ok {
 			a.logger.Debug("Missing or invalid Authorization header")
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			apperrors.SendError(w, http.StatusUnauthorized, apperrors.AuthenticationRequired)
+			apperrors.SendError(w, http.StatusUnauthorized, protocol.AuthenticationRequired)
 			return
 		}
 
@@ -42,21 +44,27 @@ func (a *AuthMiddleware) BasicAuth(next http.Handler) http.Handler {
 		if err != nil {
 			a.logger.Debug("Authentication failed", slog.String("username", username))
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			apperrors.SendError(w, http.StatusUnauthorized, apperrors.InvalidCredentials)
+			apperrors.SendError(w, http.StatusUnauthorized, protocol.InvalidCredentials)
 			return
 		}
-		ctx := context.WithValue(r.Context(), UserIDKey, profile.ID)
-		ctx = context.WithValue(ctx, UsernameKey, username)
+		ctx := context.WithValue(r.Context(), userIDKey, profile.ID)
+		ctx = context.WithValue(ctx, usernameKey, username)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func GetUserIDFromContext(ctx context.Context) (int64, bool) {
-	userID, ok := ctx.Value(UserIDKey).(int64)
-	return userID, ok
+func GetUserIDFromContext(ctx context.Context) (int64, error) {
+	userID, ok := ctx.Value(userIDKey).(int64)
+	if !ok {
+		return 0, errors.New("no authenticated user in context")
+	}
+	return userID, nil
 }
 
-func GetUsernameFromContext(ctx context.Context) (string, bool) {
-	username, ok := ctx.Value(UsernameKey).(string)
-	return username, ok
+func GetUsernameFromContext(ctx context.Context) (string, error) {
+	username, ok := ctx.Value(usernameKey).(string)
+	if !ok {
+		return "", errors.New("no authenticated user in context")
+	}
+	return username, nil
 }
