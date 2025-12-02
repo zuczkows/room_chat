@@ -23,10 +23,12 @@ func main() {
 }
 
 func setupApp() {
+	fmt.Println("AAA")
 	cfg, err := config.Load("config.json")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+	fmt.Println("BBB ", cfg.Database.Host, cfg.Database.Port)
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: cfg.Logging.GetSlogLevel(),
@@ -40,12 +42,17 @@ func setupApp() {
 		DBName:   cfg.Database.DbName,
 		SSLMode:  cfg.Database.SslMode,
 	}
+
+	fmt.Println("CCC ", dbConfig)
+
 	db, err := database.NewPostgresConnection(dbConfig)
 	logger.Info("Starting PostgresConnection", slog.String("host", cfg.Database.Host), slog.Int("port", cfg.Database.Port))
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer db.Close()
+
+	fmt.Println("DDD")
 
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
