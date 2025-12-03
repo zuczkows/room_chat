@@ -4,9 +4,12 @@ option go_package = "github.com/zuczkows/room-chat";
 
 package room_chat;
 
+import "google/protobuf/timestamp.proto";
+
 service RoomChat{
     rpc RegisterProfile (RegisterProfileRequest) returns (RegisterProfileResponse);
     rpc UpdateProfile (UpdateProfileRequest) returns (Empty);
+    rpc ListMessages (ListMessagesRequest) returns (ListMessagesResponse);
 }
 
 message Empty {}
@@ -23,5 +26,20 @@ message RegisterProfileResponse {
 
 message UpdateProfileRequest {
     string nick = 1;
+}
 
+message ListMessagesRequest {
+    string channel = 1;
+}
+
+message ListMessagesResponse {
+    repeated Message messages = 1;
+}
+
+message Message {
+    string id = 1;
+    string channel_id = 2;
+    string author_id = 3;
+    string content = 4;
+    google.protobuf.Timestamp created_at = 5;
 }

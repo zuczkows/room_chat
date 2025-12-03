@@ -7,7 +7,8 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/zuczkows/room-chat/internal/database"
+	"github.com/zuczkows/room-chat/internal/postgres"
+	"github.com/zuczkows/room-chat/internal/protocol"
 )
 
 var (
@@ -21,8 +22,8 @@ var (
 )
 
 type Repository interface {
-	Create(ctx context.Context, req CreateUserRequest) (int64, error)
-	Update(ctx context.Context, id int64, req UpdateUserRequest) (*Profile, error)
+	Create(ctx context.Context, req protocol.CreateUserRequest) (int64, error)
+	Update(ctx context.Context, id int64, req protocol.UpdateUserRequest) (*Profile, error)
 	GetByUsername(ctx context.Context, username string) (*Profile, error)
 	Delete(ctx context.Context, id int64) error
 }
@@ -35,7 +36,7 @@ func NewPostgresRepository(db *sql.DB) Repository {
 	return &PostgresRepository{db: db}
 }
 
-func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) (int64, error) {
+func (r *PostgresRepository) Create(ctx context.Context, req protocol.CreateUserRequest) (int64, error) {
 	query := `
         INSERT INTO users (username, password_hash, nick, created_at, updated_at)
         VALUES ($1, $2, $3, NOW(), NOW())
@@ -46,9 +47,9 @@ func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) 
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
-			case database.UniqueViolation:
+			case postgres.UniqueViolation:
 				return 0, ErrUserOrNickAlreadyExists
-			case database.NotNullViolation:
+			case postgres.NotNullViolation:
 				return 0, ErrMissingRequiredFields
 			default:
 				return 0, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
@@ -61,7 +62,7 @@ func (r *PostgresRepository) Create(ctx context.Context, req CreateUserRequest) 
 
 }
 
-func (r *PostgresRepository) Update(ctx context.Context, id int64, req UpdateUserRequest) (*Profile, error) {
+func (r *PostgresRepository) Update(ctx context.Context, id int64, req protocol.UpdateUserRequest) (*Profile, error) {
 	query := `
         UPDATE users
         SET nick = $1, updated_at = NOW()
@@ -79,7 +80,7 @@ func (r *PostgresRepository) Update(ctx context.Context, id int64, req UpdateUse
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
-			case database.UniqueViolation:
+			case postgres.UniqueViolation:
 				return nil, ErrNickAlreadyExists
 			default:
 				return nil, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)

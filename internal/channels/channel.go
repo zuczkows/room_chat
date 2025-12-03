@@ -1,4 +1,4 @@
-package chat
+package channels
 
 import (
 	"errors"
@@ -6,7 +6,9 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/zuczkows/room-chat/internal/elastic"
 	"github.com/zuczkows/room-chat/internal/protocol"
+	"github.com/zuczkows/room-chat/internal/user"
 )
 
 var (
@@ -14,25 +16,22 @@ var (
 	ErrNotAMember        = errors.New("user is not a member of a channel")
 )
 
-// NOTE(zuczkows): I could remove interface and just passing userManager but right now it's more universal (?)
-type UserNotifier interface {
-	SendMessage(username string, message protocol.Message) error
-}
-
 type Channel struct {
-	name         string
-	users        map[string]struct{}
-	logger       *slog.Logger
-	mu           sync.RWMutex
-	userNotifier UserNotifier
+	name           string
+	users          map[string]struct{}
+	logger         *slog.Logger
+	mu             sync.RWMutex
+	sessionManager *user.SessionManager
+	elastic        *elastic.MessageIndexer
 }
 
-func NewChannel(name string, logger *slog.Logger, notifier UserNotifier) *Channel {
+func NewChannel(name string, logger *slog.Logger, sessionManager *user.SessionManager, elastic *elastic.MessageIndexer) *Channel {
 	return &Channel{
-		name:         name,
-		logger:       logger,
-		users:        make(map[string]struct{}),
-		userNotifier: notifier,
+		name:           name,
+		logger:         logger,
+		users:          make(map[string]struct{}),
+		sessionManager: sessionManager,
+		elastic:        elastic,
 	}
 }
 
@@ -69,6 +68,9 @@ func (ch *Channel) HasUser(username string) bool {
 	ch.mu.RLock()
 	defer ch.mu.RUnlock()
 	_, exists := ch.users[username]
+	if !exists {
+		ch.logger.Debug("User is not a member of a channel", slog.String("username", username))
+	}
 	return exists
 }
 
@@ -92,7 +94,7 @@ func (ch *Channel) ActiveUsersCount() int {
 func (ch *Channel) Send(message protocol.Message) {
 	users := ch.GetUsernames()
 	for _, username := range users {
-		ch.userNotifier.SendMessage(username, message)
+		ch.sessionManager.SendMessage(username, message)
 	}
 }
 
@@ -120,15 +122,16 @@ func (ch *Channel) SendLeaveMessage(username string) {
 	ch.Send(leaveMsg)
 }
 
-func (ch *Channel) SendMessage(username, content string) {
+func (ch *Channel) SendMessage(message protocol.Message) {
 	messageToSend := protocol.Message{
 		Action:  "message",
 		Type:    protocol.MessageTypePush,
 		Channel: ch.Name(),
-		User:    username,
+		User:    message.User,
 		Push: &protocol.Push{
-			Content: content,
+			Content: message.Request.Content,
 		},
+		CreatedAt: message.CreatedAt,
 	}
 	ch.Send(messageToSend)
 }

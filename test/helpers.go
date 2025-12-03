@@ -7,12 +7,13 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
-func CreateTestUser1(t *testing.T, userService *user.Service) *user.CreateUserRequest {
+func CreateTestUser1(t *testing.T, userService *user.Service) *protocol.CreateUserRequest {
 	randomNum := rand.Intn(10000) + 1
-	testUser := &user.CreateUserRequest{
+	testUser := &protocol.CreateUserRequest{
 		Username: fmt.Sprintf("test-user-1-%d", randomNum),
 		Nick:     fmt.Sprintf("test-nick-%d", randomNum),
 		Password: "password2137!",
@@ -25,9 +26,9 @@ func CreateTestUser1(t *testing.T, userService *user.Service) *user.CreateUserRe
 }
 
 // NOTE(zuczkows): Could be more general - leaving for now (rule of three)
-func CreateTestUser2(t *testing.T, userService *user.Service) *user.CreateUserRequest {
+func CreateTestUser2(t *testing.T, userService *user.Service) *protocol.CreateUserRequest {
 	randomNum := rand.Intn(10000) + 1
-	testUser := &user.CreateUserRequest{
+	testUser := &protocol.CreateUserRequest{
 		Username: fmt.Sprintf("test-user-2-%d", randomNum),
 		Nick:     fmt.Sprintf("test-nick-%d", randomNum),
 		Password: "password2137!",
