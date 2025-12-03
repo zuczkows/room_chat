@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/zuczkows/room-chat/internal/database"
+	"github.com/zuczkows/room-chat/internal/postgres"
 	"github.com/zuczkows/room-chat/internal/protocol"
 )
 
@@ -47,9 +47,9 @@ func (r *PostgresRepository) Create(ctx context.Context, req protocol.CreateUser
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
-			case database.UniqueViolation:
+			case postgres.UniqueViolation:
 				return 0, ErrUserOrNickAlreadyExists
-			case database.NotNullViolation:
+			case postgres.NotNullViolation:
 				return 0, ErrMissingRequiredFields
 			default:
 				return 0, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)
@@ -80,7 +80,7 @@ func (r *PostgresRepository) Update(ctx context.Context, id int64, req protocol.
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
-			case database.UniqueViolation:
+			case postgres.UniqueViolation:
 				return nil, ErrNickAlreadyExists
 			default:
 				return nil, fmt.Errorf("%w: %s", ErrInternalServer, pgErr.Message)

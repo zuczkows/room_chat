@@ -1,4 +1,4 @@
-package storage
+package elastic
 
 import (
 	"bytes"

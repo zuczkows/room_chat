@@ -8,8 +8,8 @@ import (
 	"net"
 
 	"github.com/zuczkows/room-chat/internal/channels"
+	"github.com/zuczkows/room-chat/internal/elastic"
 	"github.com/zuczkows/room-chat/internal/protocol"
-	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 	"github.com/zuczkows/room-chat/internal/utils"
 	pb "github.com/zuczkows/room-chat/protobuf"
@@ -31,15 +31,15 @@ type GrpcServer struct {
 	server         *grpc.Server
 	userService    *user.Service
 	logger         *slog.Logger
-	storage        *storage.MessageIndexer
+	elastic        *elastic.MessageIndexer
 	channelManager *channels.ChannelManager
 }
 
-func NewGrpcServer(userService *user.Service, logger *slog.Logger, storage *storage.MessageIndexer, channelManager *channels.ChannelManager) *GrpcServer {
+func NewGrpcServer(userService *user.Service, logger *slog.Logger, elastic *elastic.MessageIndexer, channelManager *channels.ChannelManager) *GrpcServer {
 	gs := &GrpcServer{
 		userService:    userService,
 		logger:         logger,
-		storage:        storage,
+		elastic:        elastic,
 		channelManager: channelManager,
 	}
 	gs.server = grpc.NewServer(
@@ -170,7 +170,7 @@ func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesReques
 	if !isUserAMember {
 		return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
 	}
-	msgs, err := s.storage.ListDocuments(channel)
+	msgs, err := s.elastic.ListDocuments(channel)
 	if err != nil {
 		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
 	}

@@ -21,8 +21,8 @@ import (
 	pgc "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/zuczkows/room-chat/internal/channels"
 	"github.com/zuczkows/room-chat/internal/config"
+	"github.com/zuczkows/room-chat/internal/elastic"
 	"github.com/zuczkows/room-chat/internal/server"
-	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -33,7 +33,7 @@ const (
 
 var (
 	userService    *user.Service
-	esStorage      *storage.MessageIndexer
+	esStorage      *elastic.MessageIndexer
 	channelManager *channels.ChannelManager
 	db             *sql.DB
 	esClient       *es7.Client
@@ -126,13 +126,13 @@ func SetupDB() (*sql.DB, *es7.Client, func(), error) {
 	}, nil
 }
 
-func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *storage.MessageIndexer, *channels.ChannelManager) {
+func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *elastic.MessageIndexer, *channels.ChannelManager) {
 	userRepo := user.NewPostgresRepository(db)
 	userService := user.NewService(userRepo)
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 	channelManager := channels.NewChannelManager(logger)
-	storage := storage.NewMessageIndexer(esClient, logger, "messages")
-	storage.CreateIndex()
+	elastic := elastic.NewMessageIndexer(esClient, logger, "messages")
+	elastic.CreateIndex()
 
 	cfg := &config.Config{
 		Server: config.ServerConfig{
@@ -144,16 +144,16 @@ func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *storage.Messa
 		},
 	}
 
-	server := server.NewServer(logger, cfg, userService, storage, channelManager)
+	server := server.NewServer(logger, cfg, userService, elastic, channelManager)
 	go server.Run()
 	go server.Start()
 
 	time.Sleep(time.Millisecond * 20)
-	return userService, storage, channelManager
+	return userService, elastic, channelManager
 }
 
-func SetupGrpc(logger *slog.Logger, storage *storage.MessageIndexer, channelManager *channels.ChannelManager) (*server.GrpcServer, <-chan error) {
-	grpcServer := server.NewGrpcServer(userService, logger, storage, channelManager)
+func SetupGrpc(logger *slog.Logger, elastic *elastic.MessageIndexer, channelManager *channels.ChannelManager) (*server.GrpcServer, <-chan error) {
+	grpcServer := server.NewGrpcServer(userService, logger, elastic, channelManager)
 
 	errCh := make(chan error, 1)
 

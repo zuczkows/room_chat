@@ -7,9 +7,9 @@ import (
 	"net/http"
 
 	"github.com/zuczkows/room-chat/internal/channels"
+	"github.com/zuczkows/room-chat/internal/elastic"
 	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	"github.com/zuczkows/room-chat/internal/protocol"
-	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -17,15 +17,15 @@ type UserHandler struct {
 	userService    *user.Service
 	channelManager *channels.ChannelManager
 	logger         *slog.Logger
-	storage        *storage.MessageIndexer
+	elastic        *elastic.MessageIndexer
 }
 
-func NewUserHandler(userService *user.Service, logger *slog.Logger, storage *storage.MessageIndexer, channelManager *channels.ChannelManager) *UserHandler {
+func NewUserHandler(userService *user.Service, logger *slog.Logger, elastic *elastic.MessageIndexer, channelManager *channels.ChannelManager) *UserHandler {
 	return &UserHandler{
 		userService:    userService,
 		channelManager: channelManager,
 		logger:         logger,
-		storage:        storage,
+		elastic:        elastic,
 	}
 }
 
@@ -113,7 +113,7 @@ func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request)
 		apperrors.SendError(w, http.StatusUnauthorized, protocol.NotMemberOfChannel)
 		return
 	}
-	msgs, err := u.storage.ListDocuments(req.Channel)
+	msgs, err := u.elastic.ListDocuments(req.Channel)
 	if err != nil {
 		u.logger.Error("Fetching document from ES failed", slog.Any("error", err))
 		apperrors.SendError(w, http.StatusInternalServerError, protocol.InternalServer)

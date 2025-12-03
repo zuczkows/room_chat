@@ -11,7 +11,7 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zuczkows/room-chat/internal/storage"
+	"github.com/zuczkows/room-chat/internal/elastic"
 	"github.com/zuczkows/room-chat/internal/utils"
 	"github.com/zuczkows/room-chat/test/internal/websocket"
 )
@@ -68,7 +68,7 @@ func TestStorage(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, resp.StatusCode)
 
-		var messages []storage.IndexedMessage
+		var messages []elastic.IndexedMessage
 		err = json.NewDecoder(resp.Body).Decode(&messages)
 		require.NoError(t, err)
 

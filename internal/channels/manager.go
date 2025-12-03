@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/zuczkows/room-chat/internal/storage"
+	"github.com/zuczkows/room-chat/internal/elastic"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -37,13 +37,13 @@ func (cm *ChannelManager) Get(channelName string) (*Channel, error) {
 	}
 	return channel, nil
 }
-func (cm *ChannelManager) GetOrCreate(channelName string, logger *slog.Logger, sessionManager *user.SessionManager, storage *storage.MessageIndexer) *Channel {
+func (cm *ChannelManager) GetOrCreate(channelName string, logger *slog.Logger, sessionManager *user.SessionManager, elastic *elastic.MessageIndexer) *Channel {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	if channel, exists := cm.channels[channelName]; exists {
 		return channel
 	}
-	channel := NewChannel(channelName, logger, sessionManager, storage)
+	channel := NewChannel(channelName, logger, sessionManager, elastic)
 	cm.channels[channelName] = channel
 	cm.logger.Info("Created new channel", slog.String("channel", channelName))
 

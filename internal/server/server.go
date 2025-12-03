@@ -14,8 +14,8 @@ import (
 	"github.com/zuczkows/room-chat/internal/channels"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/connection"
+	"github.com/zuczkows/room-chat/internal/elastic"
 	"github.com/zuczkows/room-chat/internal/protocol"
-	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 	"github.com/zuczkows/room-chat/internal/utils"
 )
@@ -63,10 +63,10 @@ type Server struct {
 	config          *config.Config
 	server          *http.Server
 	userService     *user.Service
-	storage         *storage.MessageIndexer
+	elastic         *elastic.MessageIndexer
 }
 
-func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service, storage *storage.MessageIndexer, channelManager *channels.ChannelManager) *Server {
+func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service, elastic *elastic.MessageIndexer, channelManager *channels.ChannelManager) *Server {
 	return &Server{
 		clients:         make(Clients),
 		userManager:     user.NewSessionManager(logger),
@@ -77,13 +77,13 @@ func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Servic
 		logger:          logger,
 		config:          cfg,
 		userService:     userService,
-		storage:         storage,
+		elastic:         elastic,
 	}
 }
 
 func (s *Server) Start() {
 	mux := http.NewServeMux()
-	userHandler := NewUserHandler(s.userService, s.logger, s.storage, s.channelManager)
+	userHandler := NewUserHandler(s.userService, s.logger, s.elastic, s.channelManager)
 	authMiddleware := NewAuthMiddleware(s.userService, s.logger)
 
 	mux.HandleFunc("GET /ws", s.ServeWS)
@@ -204,7 +204,7 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		s.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
 		return
 	}
-	channel := s.channelManager.GetOrCreate(message.Channel, s.logger, s.userManager, s.storage)
+	channel := s.channelManager.GetOrCreate(message.Channel, s.logger, s.userManager, s.elastic)
 
 	err = s.channelManager.AddUser(message.Channel, user.Username())
 	if err != nil {
@@ -238,7 +238,12 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 	s.mu.RUnlock()
 
 	if err != nil {
-		s.sendError(senderClient, fmt.Sprintf("Channel does not exist: %s", message.Channel), message.RequestID, protocol.ValidationError)
+		switch {
+		case errors.Is(err, channels.ErrChannelDoesNotExist):
+			s.sendError(senderClient, fmt.Sprintf("Channel does not exist: %s", message.Channel), message.RequestID, protocol.ValidationError)
+		default:
+			s.sendError(senderClient, "Internal server error", message.RequestID, protocol.InternalServerError)
+		}
 	}
 
 	username := senderClient.GetUser()
@@ -246,7 +251,7 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 		s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, protocol.ForbiddenError)
 		return
 	}
-	err = s.storage.IndexMessage(message)
+	err = s.elastic.IndexMessage(message)
 	if err != nil {
 		s.logger.Warn("failed to index message",
 			slog.String("id", message.ID),

@@ -10,9 +10,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/zuczkows/room-chat/internal/channels"
 	"github.com/zuczkows/room-chat/internal/config"
-	"github.com/zuczkows/room-chat/internal/database"
+	"github.com/zuczkows/room-chat/internal/elastic"
+	"github.com/zuczkows/room-chat/internal/postgres"
 	"github.com/zuczkows/room-chat/internal/server"
-	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -32,7 +32,7 @@ func setupApp() {
 		Level: cfg.Logging.GetSlogLevel(),
 	}))
 
-	dbConfig := database.Config{
+	pgConfig := postgres.Config{
 		Host:     cfg.Database.Host,
 		Port:     cfg.Database.Port,
 		User:     cfg.Database.User,
@@ -40,7 +40,7 @@ func setupApp() {
 		DBName:   cfg.Database.DbName,
 		SSLMode:  cfg.Database.SslMode,
 	}
-	db, err := database.NewPostgresConnection(dbConfig)
+	db, err := postgres.NewPostgresConnection(pgConfig)
 	logger.Info("Starting PostgresConnection", slog.String("host", cfg.Database.Host), slog.Int("port", cfg.Database.Port))
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -58,16 +58,16 @@ func setupApp() {
 	if err != nil {
 		log.Fatalf("Failed to create Elasticsearch client: %v", err)
 	}
-	storage := storage.NewMessageIndexer(es, logger, cfg.Elasticsearch.Index)
+	elastic := elastic.NewMessageIndexer(es, logger, cfg.Elasticsearch.Index)
 	channelManager := channels.NewChannelManager(logger)
-	srv := server.NewServer(logger, cfg, userService, storage, channelManager)
+	srv := server.NewServer(logger, cfg, userService, elastic, channelManager)
 	go srv.Run()
 	go srv.Start()
 	grpcConfig := server.GrpcConfig{
 		Host: cfg.GRPC.Host,
 		Port: cfg.GRPC.Port,
 	}
-	grpcServer := server.NewGrpcServer(userService, logger, storage, channelManager)
+	grpcServer := server.NewGrpcServer(userService, logger, elastic, channelManager)
 	if err := grpcServer.Start(grpcConfig); err != nil {
 		logger.Error("Failed to serve gRPC", slog.Any("error", err))
 		os.Exit(1)

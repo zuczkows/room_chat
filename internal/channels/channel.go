@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/zuczkows/room-chat/internal/elastic"
 	"github.com/zuczkows/room-chat/internal/protocol"
-	"github.com/zuczkows/room-chat/internal/storage"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
@@ -22,16 +22,16 @@ type Channel struct {
 	logger         *slog.Logger
 	mu             sync.RWMutex
 	sessionManager *user.SessionManager
-	storage        *storage.MessageIndexer
+	elastic        *elastic.MessageIndexer
 }
 
-func NewChannel(name string, logger *slog.Logger, sessionManager *user.SessionManager, storage *storage.MessageIndexer) *Channel {
+func NewChannel(name string, logger *slog.Logger, sessionManager *user.SessionManager, elastic *elastic.MessageIndexer) *Channel {
 	return &Channel{
 		name:           name,
 		logger:         logger,
 		users:          make(map[string]struct{}),
 		sessionManager: sessionManager,
-		storage:        storage,
+		elastic:        elastic,
 	}
 }
 
