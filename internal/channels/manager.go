@@ -37,6 +37,7 @@ func (cm *ChannelManager) Get(channelName string) (*Channel, error) {
 	}
 	return channel, nil
 }
+
 func (cm *ChannelManager) GetOrCreate(channelName string, logger *slog.Logger, sessionManager *user.SessionManager, elastic *elastic.MessageIndexer) *Channel {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
@@ -50,14 +51,13 @@ func (cm *ChannelManager) GetOrCreate(channelName string, logger *slog.Logger, s
 	return channel
 }
 
-func (cm *ChannelManager) IsUserAMember(channelName, username string) bool {
+func (cm *ChannelManager) IsUserAMember(channelName, username string) (bool, error) {
 	channel, err := cm.Get(channelName)
 	if err != nil {
-		cm.logger.Debug("Channel does not exist", slog.String("channel", channelName))
-		return false
+		return false, err
 	}
 
-	return channel.HasUser(username)
+	return channel.HasUser(username), nil
 }
 
 func (cm *ChannelManager) AddUser(channelName, username string) error {

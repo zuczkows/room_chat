@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	maxRetries             = 3
+	maxAttempts            = 3
 	retryTimeoutMilisecond = time.Millisecond * 1
 )
 
@@ -111,7 +111,7 @@ func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		res, err := es.db.Index(
 			es.index,
 			bytes.NewReader(body),
@@ -119,7 +119,7 @@ func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
 		)
 		if err != nil {
 			es.logger.Warn("indexing message failed", slog.String("messageID", msg.ID), slog.Int("attempt", attempt))
-			if attempt == maxRetries {
+			if attempt == maxAttempts {
 				es.logger.Error("indexing failed after all retries", slog.String("messageID", msg.ID), slog.Any("error", err))
 				return fmt.Errorf("es indexing error: %w", err)
 			}

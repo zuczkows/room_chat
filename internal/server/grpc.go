@@ -166,12 +166,22 @@ func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesReques
 	}
 	channel := in.Channel
 
-	isUserAMember := s.channelManager.IsUserAMember(channel, authenticatedUsername)
+	isUserAMember, err := s.channelManager.IsUserAMember(channel, authenticatedUsername)
+	if err != nil {
+		switch {
+		case errors.Is(err, channels.ErrChannelDoesNotExist):
+			// do not inform about not existing channel - information disclosure
+			return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
+		default:
+			return nil, status.Error(codes.Internal, string(protocol.InternalServer))
+		}
+	}
 	if !isUserAMember {
 		return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
 	}
 	msgs, err := s.elastic.ListDocuments(channel)
 	if err != nil {
+		s.logger.Error("Fetching document from ES failed", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
 	}
 

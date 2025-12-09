@@ -40,6 +40,10 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		apperrors.SendError(w, http.StatusUnprocessableEntity, protocol.UserNameEmpty)
 		return
 	}
+	if req.Password == "" {
+		apperrors.SendError(w, http.StatusUnprocessableEntity, protocol.PasswordEmpty)
+		return
+	}
 
 	userProfileID, err := u.userService.Register(r.Context(), req)
 	if err != nil {
@@ -104,16 +108,24 @@ func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request)
 		apperrors.SendError(w, http.StatusBadRequest, protocol.MissingRequiredFields)
 		return
 	}
-	req := protocol.ListMessages{
-		Channel: channel,
-	}
 
-	isUserAMember := u.channelManager.IsUserAMember(req.Channel, authenticatedUsername)
+	isUserAMember, err := u.channelManager.IsUserAMember(channel, authenticatedUsername)
+	if err != nil {
+		switch {
+		case errors.Is(err, channels.ErrChannelDoesNotExist):
+			// do not inform about not existing channel - information disclosure
+			apperrors.SendError(w, http.StatusBadRequest, protocol.NotMemberOfChannel)
+			return
+		default:
+			apperrors.SendError(w, http.StatusInternalServerError, protocol.InternalServer)
+			return
+		}
+	}
 	if !isUserAMember {
 		apperrors.SendError(w, http.StatusUnauthorized, protocol.NotMemberOfChannel)
 		return
 	}
-	msgs, err := u.elastic.ListDocuments(req.Channel)
+	msgs, err := u.elastic.ListDocuments(channel)
 	if err != nil {
 		u.logger.Error("Fetching document from ES failed", slog.Any("error", err))
 		apperrors.SendError(w, http.StatusInternalServerError, protocol.InternalServer)

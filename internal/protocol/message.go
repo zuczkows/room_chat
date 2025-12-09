@@ -104,10 +104,6 @@ type UpdateUserRequest struct {
 	Nick string `json:"nick"`
 }
 
-type ListMessages struct {
-	Channel string `json:"channel"`
-}
-
 // note from zuczkows - I think I should manually check struct and return nice
 // error msg that i want instead of validate.Struct
 func (m *Message) Validate() error {

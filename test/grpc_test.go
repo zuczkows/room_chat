@@ -51,6 +51,7 @@ func TestGrpc(t *testing.T) {
 	testMessageUser1 := "testMessageUser1"
 	_, err = wsUser1.SendMessage(testMessageUser1, channelUser1)
 	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond) // ES time to index
 
 	t.Run("successful registration", func(t *testing.T) {
 		req := &pb.RegisterProfileRequest{
@@ -120,8 +121,6 @@ func TestGrpc(t *testing.T) {
 		req := &pb.ListMessagesRequest{
 			Channel: channelUser1,
 		}
-
-		time.Sleep(time.Second * 1)
 		response, err := client.ListMessages(ctx, req)
 		require.NoError(t, err)
 

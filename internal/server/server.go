@@ -240,14 +240,18 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 	if err != nil {
 		switch {
 		case errors.Is(err, channels.ErrChannelDoesNotExist):
-			s.sendError(senderClient, fmt.Sprintf("Channel does not exist: %s", message.Channel), message.RequestID, protocol.ValidationError)
+			// do not inform about not existing channel - information disclosure
+			s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, protocol.ValidationError)
+			return
 		default:
 			s.sendError(senderClient, "Internal server error", message.RequestID, protocol.InternalServerError)
+			return
 		}
 	}
 
 	username := senderClient.GetUser()
-	if !s.channelManager.IsUserAMember(message.Channel, username) {
+
+	if ok := channel.HasUser(username); !ok {
 		s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, protocol.ForbiddenError)
 		return
 	}

@@ -54,7 +54,7 @@ func TestChannel(t *testing.T) {
 
 		var wsErr *websocket.WSError
 		require.ErrorAs(t, err, &wsErr)
-		require.Equal(t, fmt.Sprintf("Channel does not exist: %s", channelName), wsErr.Message)
+		require.Equal(t, fmt.Sprintf("You are not a member of this channel: %s", channelName), wsErr.Message)
 		require.Equal(t, protocol.ValidationError, wsErr.Type)
 	})
 
