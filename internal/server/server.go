@@ -251,7 +251,7 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 
 	username := senderClient.GetUser()
 
-	if ok := channel.HasUser(username); !ok {
+	if !channel.HasUser(username) {
 		s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, protocol.ForbiddenError)
 		return
 	}

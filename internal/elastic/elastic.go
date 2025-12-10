@@ -2,17 +2,19 @@ package elastic
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v7"
+	"github.com/sethvargo/go-retry"
 	"github.com/zuczkows/room-chat/internal/protocol"
 )
 
 const (
-	maxAttempts            = 3
+	maxRetries             = 3
 	retryTimeoutMilisecond = time.Millisecond * 1
 )
 
@@ -111,25 +113,27 @@ func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	err = retry.Do(context.Background(), retry.WithMaxRetries(maxRetries, retry.NewConstant(retryTimeoutMilisecond)), func(ctx context.Context) error {
 		res, err := es.db.Index(
 			es.index,
 			bytes.NewReader(body),
 			es.db.Index.WithDocumentID(msg.ID),
 		)
+
 		if err != nil {
-			es.logger.Warn("indexing message failed", slog.String("messageID", msg.ID), slog.Int("attempt", attempt))
-			if attempt == maxAttempts {
-				es.logger.Error("indexing failed after all retries", slog.String("messageID", msg.ID), slog.Any("error", err))
-				return fmt.Errorf("es indexing error: %w", err)
-			}
-			time.Sleep(retryTimeoutMilisecond)
-			continue
+			es.logger.Warn("indexing message failed", slog.String("messageID", msg.ID), slog.Any("error", err))
+			return retry.RetryableError(err)
 		}
+
 		defer res.Body.Close()
 		return nil
+	})
 
+	if err != nil {
+		es.logger.Error("indexing failed after retries", slog.String("messageID", msg.ID), slog.Any("error", err))
+		return fmt.Errorf("es indexing error: %w", err)
 	}
+
 	return nil
 }
 
