@@ -41,15 +41,22 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	var cleanup func()
+	var cleanupPG func()
+	var cleanupES func()
 	var err error
 
-	db, esClient, cleanup, err = SetupDB()
+	db, cleanupPG, err = SetupPG()
 	if err != nil {
-		log.Fatalf("Error setting up database: %v", err)
+		log.Fatalf("Error setting up PG: %v", err)
 		os.Exit(1)
 	}
-	defer cleanup()
+	defer cleanupPG()
+	esClient, cleanupES, err = SetupES()
+	if err != nil {
+		log.Fatalf("Error setting up ES: %v", err)
+		os.Exit(1)
+	}
+	defer cleanupES()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	userService, esStorage, channelManager = SetupServer(db, logger)
 	_, grpcErrCh = SetupGrpc(logger, esStorage, channelManager)
@@ -58,7 +65,7 @@ func TestMain(m *testing.M) {
 	os.Exit(exitCode)
 }
 
-func SetupDB() (*sql.DB, *es7.Client, func(), error) {
+func SetupPG() (*sql.DB, func(), error) {
 	ctx := context.Background()
 
 	migrationPath := filepath.Join("..", "migrations", "001_create_users_table.up.sql")
@@ -70,33 +77,43 @@ func SetupDB() (*sql.DB, *es7.Client, func(), error) {
 	log.Printf("Postgres container is running")
 	if err != nil {
 		log.Printf("failed to start postgres container: %s", err)
-		return nil, nil, nil, nil
+		return nil, nil, nil
 	}
 
 	connStr, err := postgresContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		log.Printf("failed to return connection string for postgres database: %s", err)
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	db, err := sql.Open("pgx", connStr)
 	if err != nil {
 		log.Printf("failed to connect to database: %s", err)
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
-		return nil, nil, nil, fmt.Errorf("cannot ping db: %w", err)
+		return nil, nil, fmt.Errorf("cannot ping db: %w", err)
 	}
 
+	return db, func() {
+		err := testcontainers.TerminateContainer(postgresContainer)
+		if err != nil {
+			log.Printf("failed to terminate postgres container: %s", err)
+		}
+		log.Printf("Postgres test container terminated")
+	}, nil
+}
+
+func SetupES() (*es7.Client, func(), error) {
 	esCtx, esCancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer esCancel()
 	elasticsearchContainer, err := esc.Run(esCtx, "docker.elastic.co/elasticsearch/elasticsearch:7.9.2",
 		elasticsearch.WithPassword("foo"))
 	if err != nil {
 		log.Printf("failed to start es container: %s", err)
-		return nil, nil, nil, nil
+		return nil, nil, nil
 	}
 	log.Printf("ES container is running")
 	esConfig := es7.Config{
@@ -110,19 +127,15 @@ func SetupDB() (*sql.DB, *es7.Client, func(), error) {
 	esClient, err := es7.NewClient(esConfig)
 	if err != nil {
 		log.Printf("error creating the client: %s", err)
-		return nil, nil, nil, nil
+		return nil, nil, nil
 	}
 
-	return db, esClient, func() {
-		err := testcontainers.TerminateContainer(postgresContainer)
-		if err != nil {
-			log.Printf("failed to terminate postgres container: %s", err)
-		}
+	return esClient, func() {
 		err = testcontainers.TerminateContainer(elasticsearchContainer)
 		if err != nil {
 			log.Printf("failed to terminate ES container: %s", err)
 		}
-		log.Printf("Test container terminated")
+		log.Printf("ES test container terminated")
 	}, nil
 }
 
