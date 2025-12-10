@@ -19,14 +19,14 @@ const (
 )
 
 type AuthMiddleware struct {
-	userService *user.Service
-	logger      *slog.Logger
+	users  *user.Users
+	logger *slog.Logger
 }
 
-func NewAuthMiddleware(userService *user.Service, logger *slog.Logger) *AuthMiddleware {
+func NewAuthMiddleware(users *user.Users, logger *slog.Logger) *AuthMiddleware {
 	return &AuthMiddleware{
-		userService: userService,
-		logger:      logger,
+		users:  users,
+		logger: logger,
 	}
 }
 
@@ -40,7 +40,7 @@ func (a *AuthMiddleware) BasicAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		profile, err := a.userService.Login(r.Context(), username, password)
+		profile, err := a.users.Login(r.Context(), username, password)
 		if err != nil {
 			a.logger.Debug("Authentication failed", slog.String("username", username))
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)

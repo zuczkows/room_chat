@@ -54,7 +54,7 @@ type Clients map[string]*connection.Client
 type Server struct {
 	clients         Clients
 	userManager     *user.SessionManager
-	channelManager  *channels.ChannelManager
+	channels        *channels.Channels
 	register        chan *connection.Client
 	unregister      chan *connection.Client
 	dispatchMessage chan protocol.Message
@@ -62,29 +62,29 @@ type Server struct {
 	logger          *slog.Logger
 	config          *config.Config
 	server          *http.Server
-	userService     *user.Service
+	users           *user.Users
 	elastic         *elastic.MessageIndexer
 }
 
-func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service, elastic *elastic.MessageIndexer, channelManager *channels.ChannelManager) *Server {
+func NewServer(logger *slog.Logger, cfg *config.Config, users *user.Users, elastic *elastic.MessageIndexer, channels *channels.Channels) *Server {
 	return &Server{
 		clients:         make(Clients),
 		userManager:     user.NewSessionManager(logger),
-		channelManager:  channelManager,
+		channels:        channels,
 		register:        make(chan *connection.Client),
 		unregister:      make(chan *connection.Client),
 		dispatchMessage: make(chan protocol.Message),
 		logger:          logger,
 		config:          cfg,
-		userService:     userService,
+		users:           users,
 		elastic:         elastic,
 	}
 }
 
 func (s *Server) Start() {
 	mux := http.NewServeMux()
-	userHandler := NewUserHandler(s.userService, s.logger, s.elastic, s.channelManager)
-	authMiddleware := NewAuthMiddleware(s.userService, s.logger)
+	userHandler := NewUserHandler(s.users, s.logger, s.elastic, s.channels)
+	authMiddleware := NewAuthMiddleware(s.users, s.logger)
 
 	mux.HandleFunc("GET /ws", s.ServeWS)
 	mux.HandleFunc("POST /api/register", userHandler.HandleRegister)
@@ -163,7 +163,7 @@ func (s *Server) handleLogin(message protocol.Message) {
 		s.sendError(senderClient, MissingOrInvalidCredentials, message.RequestID, protocol.AuthorizationError)
 		return
 	}
-	profile, err := s.userService.Login(context.Background(), username, password)
+	profile, err := s.users.Login(context.Background(), username, password)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserNotFound):
@@ -204,9 +204,9 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		s.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
 		return
 	}
-	channel := s.channelManager.GetOrCreate(message.Channel, s.logger, s.userManager, s.elastic)
+	channel := s.channels.GetOrCreate(message.Channel, s.logger, s.userManager, s.elastic)
 
-	err = s.channelManager.AddUser(message.Channel, user.Username())
+	err = s.channels.AddUser(message.Channel, user.Username())
 	if err != nil {
 		s.mu.Unlock()
 		switch {
@@ -234,7 +234,7 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 		return
 	}
 
-	channel, err := s.channelManager.Get(message.Channel)
+	channel, err := s.channels.Get(message.Channel)
 	s.mu.RUnlock()
 
 	if err != nil {
@@ -279,7 +279,7 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 		return
 	}
 
-	channel, err := s.channelManager.Get(message.Channel)
+	channel, err := s.channels.Get(message.Channel)
 	if err != nil {
 		s.mu.RUnlock()
 		s.sendError(senderClient, fmt.Sprintf("Channel %s does not exist", channelName), message.RequestID, protocol.ValidationError)
@@ -314,7 +314,7 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
-		s.channelManager.Delete(channelName)
+		s.channels.Delete(channelName)
 		s.logger.Info("Channel deleted", slog.String("channel", channelName))
 	}
 	s.mu.Unlock()
@@ -386,7 +386,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 
 	for _, channelName := range user.GetChannels() {
 		s.mu.RLock()
-		channel, err := s.channelManager.Get(channelName)
+		channel, err := s.channels.Get(channelName)
 		if err != nil {
 			s.logger.Warn("lost synchronization - user belongs to non existing channel", slog.String("username", userName), slog.String("channel", channelName))
 			user.RemoveChannel(channelName)
@@ -413,7 +413,7 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 func (s *Server) cleanupEmptyChannel(channelName string, channel *channels.Channel) {
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
-		s.channelManager.Delete(channelName)
+		s.channels.Delete(channelName)
 	}
 	s.mu.Unlock()
 }

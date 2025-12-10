@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/zuczkows/room-chat/internal/channels"
+	c "github.com/zuczkows/room-chat/internal/channels"
 	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/server"
 	"github.com/zuczkows/room-chat/internal/user"
@@ -23,10 +23,9 @@ import (
 
 func TestUserHandlerPositive(t *testing.T) {
 	userRepo := user.NewPostgresRepository(db)
-	userService := user.NewService(userRepo)
+	users := user.NewUsers(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	channelManager := channels.NewChannelManager(logger)
-	handler := server.NewUserHandler(userService, logger, esStorage, channelManager)
+	handler := server.NewUserHandler(users, logger, esStorage, channels)
 
 	t.Run("successful registration", func(t *testing.T) {
 		createUserRequest := protocol.CreateUserRequest{
@@ -49,11 +48,11 @@ func TestUserHandlerPositive(t *testing.T) {
 
 func TestUserHandlerNegative(t *testing.T) {
 	userRepo := user.NewPostgresRepository(db)
-	userService := user.NewService(userRepo)
+	users := user.NewUsers(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	channelManager := channels.NewChannelManager(logger)
-	handler := server.NewUserHandler(userService, logger, esStorage, channelManager)
-	testUser1 := CreateTestUser1(t, userService)
+	channels := c.NewChannels(logger)
+	handler := server.NewUserHandler(users, logger, esStorage, channels)
+	testUser1 := CreateTestUser1(t, users)
 
 	tests := []struct {
 		name              string

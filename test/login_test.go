@@ -17,7 +17,7 @@ import (
 )
 
 func TestLogin(t *testing.T) {
-	testUser := CreateTestUser1(t, userService)
+	testUser := CreateTestUser1(t, users)
 
 	t.Run("successful_login", func(t *testing.T) {
 		ws, err := websocket.NewRoomChatWS("localhost:8080", time.Second*10, "test-user")

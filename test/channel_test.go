@@ -17,8 +17,8 @@ import (
 
 func TestChannel(t *testing.T) {
 
-	testUser1 := CreateTestUser1(t, userService)
-	testUser2 := CreateTestUser2(t, userService)
+	testUser1 := CreateTestUser1(t, users)
+	testUser2 := CreateTestUser2(t, users)
 
 	wsUser1, err := websocket.NewRoomChatWS("localhost:8080", time.Second*10, "test-user")
 	require.NoError(t, err)

@@ -28,19 +28,19 @@ type GrpcConfig struct {
 type GrpcServer struct {
 	pb.UnimplementedRoomChatServer
 
-	server         *grpc.Server
-	userService    *user.Service
-	logger         *slog.Logger
-	elastic        *elastic.MessageIndexer
-	channelManager *channels.ChannelManager
+	server   *grpc.Server
+	users    *user.Users
+	logger   *slog.Logger
+	elastic  *elastic.MessageIndexer
+	channels *channels.Channels
 }
 
-func NewGrpcServer(userService *user.Service, logger *slog.Logger, elastic *elastic.MessageIndexer, channelManager *channels.ChannelManager) *GrpcServer {
+func NewGrpcServer(users *user.Users, logger *slog.Logger, elastic *elastic.MessageIndexer, channels *channels.Channels) *GrpcServer {
 	gs := &GrpcServer{
-		userService:    userService,
-		logger:         logger,
-		elastic:        elastic,
-		channelManager: channelManager,
+		users:    users,
+		logger:   logger,
+		elastic:  elastic,
+		channels: channels,
 	}
 	gs.server = grpc.NewServer(
 		grpc.UnaryInterceptor(gs.AuthInterceptor),
@@ -84,7 +84,7 @@ func (s *GrpcServer) AuthInterceptor(ctx context.Context, req interface{}, info 
 	if !ok {
 		return nil, status.Error(codes.PermissionDenied, string(protocol.MissingOrInvalidCredentials))
 	}
-	profile, err := s.userService.Login(ctx, username, password)
+	profile, err := s.users.Login(ctx, username, password)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserNotFound):
@@ -116,7 +116,7 @@ func (s *GrpcServer) RegisterProfile(ctx context.Context, in *pb.RegisterProfile
 		Password: in.Password,
 		Nick:     in.Nick,
 	}
-	userID, err := s.userService.Register(ctx, req)
+	userID, err := s.users.Register(ctx, req)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
@@ -143,7 +143,7 @@ func (s *GrpcServer) UpdateProfile(ctx context.Context, in *pb.UpdateProfileRequ
 		Nick: in.Nick,
 	}
 
-	_, err = s.userService.UpdateProfile(ctx, userID, req)
+	_, err = s.users.UpdateProfile(ctx, userID, req)
 	if err != nil {
 		s.logger.Error("Profile update failed", slog.Any("error", err))
 		switch {
@@ -164,9 +164,8 @@ func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesReques
 		s.logger.Error("No authenticated user in context")
 		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
 	}
-	channel := in.Channel
 
-	isUserAMember, err := s.channelManager.IsUserAMember(channel, authenticatedUsername)
+	isUserAMember, err := s.channels.IsUserAMember(in.Channel, authenticatedUsername)
 	if err != nil {
 		switch {
 		case errors.Is(err, channels.ErrChannelDoesNotExist):
@@ -179,7 +178,7 @@ func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesReques
 	if !isUserAMember {
 		return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
 	}
-	msgs, err := s.elastic.ListDocuments(channel)
+	msgs, err := s.elastic.ListDocuments(in.Channel)
 	if err != nil {
 		s.logger.Error("Fetching document from ES failed", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, string(protocol.InternalServer))

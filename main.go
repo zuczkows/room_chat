@@ -48,7 +48,7 @@ func setupApp() {
 	defer db.Close()
 
 	userRepo := user.NewPostgresRepository(db)
-	userService := user.NewService(userRepo)
+	users := user.NewUsers(userRepo)
 
 	es, err := elasticsearch.NewClient(elasticsearch.Config{
 		Addresses: []string{
@@ -59,15 +59,15 @@ func setupApp() {
 		log.Fatalf("Failed to create Elasticsearch client: %v", err)
 	}
 	elastic := elastic.NewMessageIndexer(es, logger, cfg.Elasticsearch.Index)
-	channelManager := channels.NewChannelManager(logger)
-	srv := server.NewServer(logger, cfg, userService, elastic, channelManager)
+	channels := channels.NewChannels(logger)
+	srv := server.NewServer(logger, cfg, users, elastic, channels)
 	go srv.Run()
 	go srv.Start()
 	grpcConfig := server.GrpcConfig{
 		Host: cfg.GRPC.Host,
 		Port: cfg.GRPC.Port,
 	}
-	grpcServer := server.NewGrpcServer(userService, logger, elastic, channelManager)
+	grpcServer := server.NewGrpcServer(users, logger, elastic, channels)
 	if err := grpcServer.Start(grpcConfig); err != nil {
 		logger.Error("Failed to serve gRPC", slog.Any("error", err))
 		os.Exit(1)

@@ -14,18 +14,18 @@ import (
 )
 
 type UserHandler struct {
-	userService    *user.Service
-	channelManager *channels.ChannelManager
-	logger         *slog.Logger
-	elastic        *elastic.MessageIndexer
+	users    *user.Users
+	channels *channels.Channels
+	logger   *slog.Logger
+	elastic  *elastic.MessageIndexer
 }
 
-func NewUserHandler(userService *user.Service, logger *slog.Logger, elastic *elastic.MessageIndexer, channelManager *channels.ChannelManager) *UserHandler {
+func NewUserHandler(users *user.Users, logger *slog.Logger, elastic *elastic.MessageIndexer, channels *channels.Channels) *UserHandler {
 	return &UserHandler{
-		userService:    userService,
-		channelManager: channelManager,
-		logger:         logger,
-		elastic:        elastic,
+		users:    users,
+		channels: channels,
+		logger:   logger,
+		elastic:  elastic,
 	}
 }
 
@@ -45,7 +45,7 @@ func (u *UserHandler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userProfileID, err := u.userService.Register(r.Context(), req)
+	userProfileID, err := u.users.Register(r.Context(), req)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
@@ -79,7 +79,7 @@ func (u *UserHandler) HandleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updatedUser, err := u.userService.UpdateProfile(r.Context(), authenticatedUserID, req)
+	updatedUser, err := u.users.UpdateProfile(r.Context(), authenticatedUserID, req)
 	if err != nil {
 		u.logger.Error("Profile update failed", slog.Any("error", err))
 		switch {
@@ -109,7 +109,7 @@ func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	isUserAMember, err := u.channelManager.IsUserAMember(channel, authenticatedUsername)
+	isUserAMember, err := u.channels.IsUserAMember(channel, authenticatedUsername)
 	if err != nil {
 		switch {
 		case errors.Is(err, channels.ErrChannelDoesNotExist):

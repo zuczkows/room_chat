@@ -14,20 +14,20 @@ var (
 	ErrChannelAlreadyExist = errors.New("channel already exist")
 )
 
-type ChannelManager struct {
+type Channels struct {
 	channels map[string]*Channel
 	mu       sync.RWMutex
 	logger   *slog.Logger
 }
 
-func NewChannelManager(logger *slog.Logger) *ChannelManager {
-	return &ChannelManager{
+func NewChannels(logger *slog.Logger) *Channels {
+	return &Channels{
 		channels: make(map[string]*Channel),
 		logger:   logger,
 	}
 }
 
-func (cm *ChannelManager) Get(channelName string) (*Channel, error) {
+func (cm *Channels) Get(channelName string) (*Channel, error) {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
 
@@ -38,7 +38,7 @@ func (cm *ChannelManager) Get(channelName string) (*Channel, error) {
 	return channel, nil
 }
 
-func (cm *ChannelManager) GetOrCreate(channelName string, logger *slog.Logger, sessionManager *user.SessionManager, elastic *elastic.MessageIndexer) *Channel {
+func (cm *Channels) GetOrCreate(channelName string, logger *slog.Logger, sessionManager *user.SessionManager, elastic *elastic.MessageIndexer) *Channel {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	if channel, exists := cm.channels[channelName]; exists {
@@ -51,7 +51,7 @@ func (cm *ChannelManager) GetOrCreate(channelName string, logger *slog.Logger, s
 	return channel
 }
 
-func (cm *ChannelManager) IsUserAMember(channelName, username string) (bool, error) {
+func (cm *Channels) IsUserAMember(channelName, username string) (bool, error) {
 	channel, err := cm.Get(channelName)
 	if err != nil {
 		return false, err
@@ -60,7 +60,7 @@ func (cm *ChannelManager) IsUserAMember(channelName, username string) (bool, err
 	return channel.HasUser(username), nil
 }
 
-func (cm *ChannelManager) AddUser(channelName, username string) error {
+func (cm *Channels) AddUser(channelName, username string) error {
 	channel, err := cm.Get(channelName)
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func (cm *ChannelManager) AddUser(channelName, username string) error {
 	return channel.AddUser(username)
 }
 
-func (cm *ChannelManager) Delete(channelName string) error {
+func (cm *Channels) Delete(channelName string) error {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 

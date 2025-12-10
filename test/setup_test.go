@@ -19,7 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/modules/elasticsearch"
 	esc "github.com/testcontainers/testcontainers-go/modules/elasticsearch"
 	pgc "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/zuczkows/room-chat/internal/channels"
+	c "github.com/zuczkows/room-chat/internal/channels"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/elastic"
 	"github.com/zuczkows/room-chat/internal/server"
@@ -32,12 +32,12 @@ const (
 )
 
 var (
-	userService    *user.Service
-	esStorage      *elastic.MessageIndexer
-	channelManager *channels.ChannelManager
-	db             *sql.DB
-	esClient       *es7.Client
-	grpcErrCh      <-chan error
+	users     *user.Users
+	esStorage *elastic.MessageIndexer
+	channels  *c.Channels
+	db        *sql.DB
+	esClient  *es7.Client
+	grpcErrCh <-chan error
 )
 
 func TestMain(m *testing.M) {
@@ -58,8 +58,8 @@ func TestMain(m *testing.M) {
 	}
 	defer cleanupES()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	userService, esStorage, channelManager = SetupServer(db, logger)
-	_, grpcErrCh = SetupGrpc(logger, esStorage, channelManager)
+	users, esStorage, channels = SetupServer(db, logger)
+	_, grpcErrCh = SetupGrpc(logger, esStorage, channels)
 
 	exitCode := m.Run()
 	os.Exit(exitCode)
@@ -139,11 +139,11 @@ func SetupES() (*es7.Client, func(), error) {
 	}, nil
 }
 
-func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *elastic.MessageIndexer, *channels.ChannelManager) {
+func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Users, *elastic.MessageIndexer, *c.Channels) {
 	userRepo := user.NewPostgresRepository(db)
-	userService := user.NewService(userRepo)
+	users := user.NewUsers(userRepo)
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
-	channelManager := channels.NewChannelManager(logger)
+	channels := c.NewChannels(logger)
 	elastic := elastic.NewMessageIndexer(esClient, logger, "messages")
 	elastic.CreateIndex()
 
@@ -157,16 +157,16 @@ func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Service, *elastic.Messa
 		},
 	}
 
-	server := server.NewServer(logger, cfg, userService, elastic, channelManager)
+	server := server.NewServer(logger, cfg, users, elastic, channels)
 	go server.Run()
 	go server.Start()
 
 	time.Sleep(time.Millisecond * 20)
-	return userService, elastic, channelManager
+	return users, elastic, channels
 }
 
-func SetupGrpc(logger *slog.Logger, elastic *elastic.MessageIndexer, channelManager *channels.ChannelManager) (*server.GrpcServer, <-chan error) {
-	grpcServer := server.NewGrpcServer(userService, logger, elastic, channelManager)
+func SetupGrpc(logger *slog.Logger, elastic *elastic.MessageIndexer, channels *c.Channels) (*server.GrpcServer, <-chan error) {
+	grpcServer := server.NewGrpcServer(users, logger, elastic, channels)
 
 	errCh := make(chan error, 1)
 

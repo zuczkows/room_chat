@@ -28,7 +28,7 @@ func TestGrpc(t *testing.T) {
 		t.Fatalf("gRPC server failed to start: %v", err)
 	default:
 	}
-	testUser1 := CreateTestUser1(t, userService)
+	testUser1 := CreateTestUser1(t, users)
 
 	grpcConn, err := grpc.NewClient(fmt.Sprintf("%s:%d", grpcAddr, grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
