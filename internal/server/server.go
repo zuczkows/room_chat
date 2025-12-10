@@ -257,10 +257,7 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 	}
 	err = s.elastic.IndexMessage(message)
 	if err != nil {
-		s.logger.Warn("failed to index message",
-			slog.String("id", message.ID),
-			slog.Any("error", err),
-		)
+		s.logger.Error("failed to index message", slog.String("id", message.ID), slog.Any("error", err))
 		s.sendError(senderClient, InternalServerError, message.RequestID, protocol.InternalServerError)
 		return
 	}

@@ -8,10 +8,10 @@ import (
 )
 
 type ErrorResponse struct {
-	Error protocol.UserMessage `json:"error"`
+	Error protocol.UserErrMessage `json:"error"`
 }
 
-func SendError(w http.ResponseWriter, status int, msg protocol.UserMessage) {
+func SendError(w http.ResponseWriter, status int, msg protocol.UserErrMessage) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 

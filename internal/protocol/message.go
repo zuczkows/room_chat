@@ -9,7 +9,7 @@ import (
 type MessageAction string
 type MessageType string
 type ErrorType string
-type UserMessage string
+type UserErrMessage string
 
 const (
 	MesageActionJoin    MessageAction = "join"
@@ -35,21 +35,21 @@ const (
 )
 
 const (
-	UsernameNickTaken           UserMessage = "Username or nickname is already taken."
-	InternalServer              UserMessage = "Something went wrong on our side."
-	MissingRequiredFields       UserMessage = "Some required fields are missing."
-	UserNameEmpty               UserMessage = "Username cannot be empty."
-	PasswordEmpty               UserMessage = "Password cannot be empty."
-	InvalidUsernameOrPassword   UserMessage = "Invalid username or password."
-	NickAlreadyExists           UserMessage = "Nick already exists."
-	AuthenticationRequired      UserMessage = "Authentication required."
-	MissingOrInvalidCredentials UserMessage = "Missing or invalid credentials."
-	MissingMetadata             UserMessage = "Missing metadata."
-	MissingAuthorization        UserMessage = "Missing authorization header."
-	NotMemberOfChannel          UserMessage = "You are not a member of this channel."
-	InvalidJSON                 UserMessage = "Invalid JSON."
-	AuthorizationRequired       UserMessage = "Authorization required."
-	InvalidCredentials          UserMessage = "Invalid credentials."
+	UsernameNickTaken           UserErrMessage = "Username or nickname is already taken."
+	InternalServer              UserErrMessage = "Something went wrong on our side."
+	MissingRequiredFields       UserErrMessage = "Some required fields are missing."
+	UserNameEmpty               UserErrMessage = "Username cannot be empty."
+	PasswordEmpty               UserErrMessage = "Password cannot be empty."
+	InvalidUsernameOrPassword   UserErrMessage = "Invalid username or password."
+	NickAlreadyExists           UserErrMessage = "Nick already exists."
+	AuthenticationRequired      UserErrMessage = "Authentication required."
+	MissingOrInvalidCredentials UserErrMessage = "Missing or invalid credentials."
+	MissingMetadata             UserErrMessage = "Missing metadata."
+	MissingAuthorization        UserErrMessage = "Missing authorization header."
+	NotMemberOfChannel          UserErrMessage = "You are not a member of this channel."
+	InvalidJSON                 UserErrMessage = "Invalid JSON."
+	AuthorizationRequired       UserErrMessage = "Authorization required."
+	InvalidCredentials          UserErrMessage = "Invalid credentials."
 )
 
 var validate = validator.New()

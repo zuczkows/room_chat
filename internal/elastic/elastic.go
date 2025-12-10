@@ -62,7 +62,7 @@ type ESField struct {
 	Type string `json:"type"`
 }
 
-type CreateQuery struct {
+type SearchQuery struct {
 	Query ESQuery     `json:"query"`
 	Sort  []SortQuery `json:"sort"`
 }
@@ -140,7 +140,7 @@ func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
 func (es *MessageIndexer) ListDocuments(channel string) ([]IndexedMessage, error) {
 	es.logger.Debug("Calling List documents", slog.String("channel", channel))
 
-	query := CreateQuery{
+	query := SearchQuery{
 		Query: ESQuery{
 			Term: Term{
 				ChannelID: channel,

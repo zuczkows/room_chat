@@ -2,20 +2,12 @@ package server
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 
 	apperrors "github.com/zuczkows/room-chat/internal/errors"
 	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/user"
-)
-
-type contextKey string
-
-const (
-	userIDKey   contextKey = "userID"
-	usernameKey contextKey = "username"
 )
 
 type AuthMiddleware struct {
@@ -51,20 +43,4 @@ func (a *AuthMiddleware) BasicAuth(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, usernameKey, username)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-func GetUserIDFromContext(ctx context.Context) (int64, error) {
-	userID, ok := ctx.Value(userIDKey).(int64)
-	if !ok {
-		return 0, errors.New("no authenticated user in context")
-	}
-	return userID, nil
-}
-
-func GetUsernameFromContext(ctx context.Context) (string, error) {
-	username, ok := ctx.Value(usernameKey).(string)
-	if !ok {
-		return "", errors.New("no authenticated user in context")
-	}
-	return username, nil
 }
