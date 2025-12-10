@@ -27,32 +27,32 @@ func NewChannels(logger *slog.Logger) *Channels {
 	}
 }
 
-func (cm *Channels) Get(channelName string) (*Channel, error) {
-	cm.mu.RLock()
-	defer cm.mu.RUnlock()
+func (c *Channels) Get(channelName string) (*Channel, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
-	channel, exists := cm.channels[channelName]
+	channel, exists := c.channels[channelName]
 	if !exists {
 		return nil, ErrChannelDoesNotExist
 	}
 	return channel, nil
 }
 
-func (cm *Channels) GetOrCreate(channelName string, logger *slog.Logger, sessionManager *user.SessionManager, elastic *elastic.MessageIndexer) *Channel {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
-	if channel, exists := cm.channels[channelName]; exists {
+func (c *Channels) GetOrCreate(channelName string, logger *slog.Logger, sessionManager *user.SessionManager, elastic *elastic.MessageIndexer) *Channel {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if channel, exists := c.channels[channelName]; exists {
 		return channel
 	}
 	channel := NewChannel(channelName, logger, sessionManager, elastic)
-	cm.channels[channelName] = channel
-	cm.logger.Info("Created new channel", slog.String("channel", channelName))
+	c.channels[channelName] = channel
+	c.logger.Info("Created new channel", slog.String("channel", channelName))
 
 	return channel
 }
 
-func (cm *Channels) IsUserAMember(channelName, username string) (bool, error) {
-	channel, err := cm.Get(channelName)
+func (c *Channels) IsUserAMember(channelName, username string) (bool, error) {
+	channel, err := c.Get(channelName)
 	if err != nil {
 		return false, err
 	}
@@ -60,22 +60,22 @@ func (cm *Channels) IsUserAMember(channelName, username string) (bool, error) {
 	return channel.HasUser(username), nil
 }
 
-func (cm *Channels) AddUser(channelName, username string) error {
-	channel, err := cm.Get(channelName)
+func (c *Channels) AddUser(channelName, username string) error {
+	channel, err := c.Get(channelName)
 	if err != nil {
 		return err
 	}
 	return channel.AddUser(username)
 }
 
-func (cm *Channels) Delete(channelName string) error {
-	cm.mu.Lock()
-	defer cm.mu.Unlock()
+func (c *Channels) Delete(channelName string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-	if _, ok := cm.channels[channelName]; !ok {
+	if _, ok := c.channels[channelName]; !ok {
 		return ErrChannelDoesNotExist
 	}
-	delete(cm.channels, channelName)
-	cm.logger.Info("Deleted channel", slog.String("channel", channelName))
+	delete(c.channels, channelName)
+	c.logger.Info("Deleted channel", slog.String("channel", channelName))
 	return nil
 }
