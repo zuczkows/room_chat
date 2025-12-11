@@ -1,26 +1,24 @@
-package middleware
+package server
 
 import (
 	"context"
 	"log/slog"
 	"net/http"
 
+	apperrors "github.com/zuczkows/room-chat/internal/errors"
+	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
-type contextKey string
-
-const UserContextKey contextKey = "user"
-
 type AuthMiddleware struct {
-	userService *user.Service
-	logger      *slog.Logger
+	users  *user.Users
+	logger *slog.Logger
 }
 
-func NewAuthMiddleware(userService *user.Service, logger *slog.Logger) *AuthMiddleware {
+func NewAuthMiddleware(users *user.Users, logger *slog.Logger) *AuthMiddleware {
 	return &AuthMiddleware{
-		userService: userService,
-		logger:      logger,
+		users:  users,
+		logger: logger,
 	}
 }
 
@@ -30,24 +28,19 @@ func (a *AuthMiddleware) BasicAuth(next http.Handler) http.Handler {
 		if !ok {
 			a.logger.Debug("Missing or invalid Authorization header")
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Authorization required", http.StatusUnauthorized)
+			apperrors.SendError(w, http.StatusUnauthorized, protocol.AuthenticationRequired)
 			return
 		}
 
-		userID, err := a.userService.Login(r.Context(), username, password)
+		profile, err := a.users.Login(r.Context(), username, password)
 		if err != nil {
 			a.logger.Debug("Authentication failed", slog.String("username", username))
 			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			apperrors.SendError(w, http.StatusUnauthorized, protocol.InvalidCredentials)
 			return
 		}
-
-		ctx := context.WithValue(r.Context(), UserContextKey, userID)
+		ctx := context.WithValue(r.Context(), userIDKey, profile.ID)
+		ctx = context.WithValue(ctx, usernameKey, username)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-func GetUserIDFromContext(ctx context.Context) (int64, bool) {
-	userID, ok := ctx.Value(UserContextKey).(int64)
-	return userID, ok
 }

@@ -1,4 +1,4 @@
-package database
+package postgres
 
 // Copied from https://github.com/jackc/pgerrcode/blob/master/errcode.go
 const (

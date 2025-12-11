@@ -1,0 +1,156 @@
+package elastic
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/elastic/go-elasticsearch/v7"
+	"github.com/sethvargo/go-retry"
+	"github.com/zuczkows/room-chat/internal/protocol"
+)
+
+const (
+	maxRetries             = 3
+	retryTimeoutMilisecond = time.Millisecond * 1
+)
+
+type IndexedMessage struct {
+	ID        string    `json:"message_id"`
+	ChannelID string    `json:"channel_id"`
+	AuthorID  string    `json:"author_id"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type EsResponse struct {
+	Hits struct {
+		Hits []Hit `json:"hits"`
+	} `json:"hits"`
+}
+
+type Hit struct {
+	Source IndexedMessage `json:"_source"`
+}
+
+type SearchQuery struct {
+	Query ESQuery     `json:"query"`
+	Sort  []SortQuery `json:"sort"`
+}
+
+type ESQuery struct {
+	Term Term `json:"term"`
+}
+
+type Term struct {
+	ChannelID string `json:"channel_id"`
+}
+
+type SortQuery struct {
+	CreatedAt SortOrder `json:"created_at"`
+}
+
+type SortOrder struct {
+	Order string `json:"order"`
+}
+
+type MessageIndexer struct {
+	db     *elasticsearch.Client
+	logger *slog.Logger
+	index  string
+}
+
+func NewMessageIndexer(db *elasticsearch.Client, logger *slog.Logger, index string) *MessageIndexer {
+	return &MessageIndexer{
+		db:     db,
+		logger: logger,
+		index:  index,
+	}
+}
+
+func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
+	es.logger.Debug("Calling Index WS Message", slog.String("channel", message.Channel))
+	msg := IndexedMessage{
+		ID:        message.ID,
+		ChannelID: message.Channel,
+		AuthorID:  message.User,
+		Content:   message.Request.Content,
+		CreatedAt: message.CreatedAt,
+	}
+
+	body, err := json.Marshal(msg)
+	if err != nil {
+		es.logger.Error("error marshaling message", slog.Any("error", err))
+		return fmt.Errorf("marshal error: %w", err)
+	}
+
+	err = retry.Do(context.Background(), retry.WithMaxRetries(maxRetries, retry.NewConstant(retryTimeoutMilisecond)), func(ctx context.Context) error {
+		res, err := es.db.Index(
+			es.index,
+			bytes.NewReader(body),
+			es.db.Index.WithDocumentID(msg.ID),
+		)
+
+		if err != nil {
+			es.logger.Warn("indexing message failed", slog.String("messageID", msg.ID), slog.Any("error", err))
+			return retry.RetryableError(err)
+		}
+
+		defer res.Body.Close()
+		return nil
+	})
+
+	if err != nil {
+		es.logger.Error("indexing failed after retries", slog.String("messageID", msg.ID), slog.Any("error", err))
+		return fmt.Errorf("es indexing error: %w", err)
+	}
+
+	return nil
+}
+
+func (es *MessageIndexer) ListDocuments(channel string) ([]IndexedMessage, error) {
+	es.logger.Debug("Calling List documents", slog.String("channel", channel))
+
+	query := SearchQuery{
+		Query: ESQuery{
+			Term: Term{
+				ChannelID: channel,
+			},
+		},
+		Sort: []SortQuery{
+			{
+				CreatedAt: SortOrder{Order: "desc"},
+			},
+		},
+	}
+
+	byteQuery, err := json.Marshal(query)
+	if err != nil {
+		es.logger.Error("error marshaling query", slog.Any("error", err))
+		return nil, fmt.Errorf("marshal error: %w", err)
+	}
+
+	res, err := es.db.Search(
+		es.db.Search.WithBody(bytes.NewReader(byteQuery)),
+		es.db.Search.WithIndex(es.index),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("es search error: %w", err)
+	}
+	defer res.Body.Close()
+
+	var esResponse EsResponse
+
+	if err = json.NewDecoder(res.Body).Decode(&esResponse); err != nil {
+		return nil, fmt.Errorf("failed to decode es response: %w", err)
+	}
+
+	messages := make([]IndexedMessage, 0, len(esResponse.Hits.Hits))
+	for _, h := range esResponse.Hits.Hits {
+		messages = append(messages, h.Source)
+	}
+	return messages, nil
+}

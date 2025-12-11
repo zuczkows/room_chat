@@ -4,18 +4,19 @@ import (
 	"context"
 	"errors"
 
+	"github.com/zuczkows/room-chat/internal/protocol"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type Service struct {
+type Users struct {
 	repo Repository
 }
 
-func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+func NewUsers(repo Repository) *Users {
+	return &Users{repo: repo}
 }
 
-func (s *Service) Register(ctx context.Context, req CreateUserRequest) (int64, error) {
+func (s *Users) Register(ctx context.Context, req protocol.CreateUserRequest) (int64, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return 0, err
@@ -25,7 +26,7 @@ func (s *Service) Register(ctx context.Context, req CreateUserRequest) (int64, e
 	return s.repo.Create(ctx, req)
 }
 
-func (s *Service) Login(ctx context.Context, username, password string) (*Profile, error) {
+func (s *Users) Login(ctx context.Context, username, password string) (*Profile, error) {
 	user, err := s.repo.GetByUsername(ctx, username)
 	if err != nil {
 		switch {
@@ -44,6 +45,6 @@ func (s *Service) Login(ctx context.Context, username, password string) (*Profil
 	return user, nil
 }
 
-func (s *Service) UpdateProfile(ctx context.Context, userID int64, req UpdateUserRequest) (*Profile, error) {
+func (s *Users) UpdateProfile(ctx context.Context, userID int64, req protocol.UpdateUserRequest) (*Profile, error) {
 	return s.repo.Update(ctx, userID, req)
 }

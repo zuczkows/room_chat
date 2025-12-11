@@ -1,0 +1,66 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: chat
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password}
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d chat"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pg-migrate:
+    image: migrate/migrate
+    volumes:
+      - ./migrations:/migrations
+    command: [
+      "-path", "/migrations",
+      "-database", "postgres://testuser:${DB_PASSWORD:-password}@postgres:5432/chat?sslmode=disable",
+      "up"
+    ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  elastic:
+    image: elasticsearch:7.17.9
+    environment:
+      discovery.type: single-node
+      ELASTIC_PASSWORD: admin
+      xpack.security.enabled: "true"
+    ports:
+      - "9200:9200"
+    volumes:
+      - ./data/elasticsearch:/usr/share/elasticsearch/data
+    healthcheck:
+      test: curl --fail -u elastic:admin http://localhost:9200/_cluster/health || exit 1
+      timeout: 3s
+      interval: 10s
+      retries: 15
+  es_migrate:
+    image: curlimages/curl:8.2.1
+    command: sh /migrations/init_index_up.sh http://elastic:9200 messages elastic admin
+    volumes:
+      - ./migrations/es:/migrations
+    restart: on-failure
+    depends_on:
+      elastic:
+        condition: service_healthy
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.9
+    environment:
+      ELASTICSEARCH_HOSTS: "http://elastic:9200"
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elastic

@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"net"
 
-	apperrors "github.com/zuczkows/room-chat/internal/errors"
+	"github.com/zuczkows/room-chat/internal/channels"
+	"github.com/zuczkows/room-chat/internal/elastic"
+	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/user"
 	"github.com/zuczkows/room-chat/internal/utils"
 	pb "github.com/zuczkows/room-chat/protobuf"
@@ -15,6 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type GrpcConfig struct {
@@ -22,22 +25,22 @@ type GrpcConfig struct {
 	Port int
 }
 
-type contextKey string
-
-const UserContextKey contextKey = "user"
-
 type GrpcServer struct {
 	pb.UnimplementedRoomChatServer
 
-	server      *grpc.Server
-	userService *user.Service
-	logger      *slog.Logger
+	server   *grpc.Server
+	users    *user.Users
+	logger   *slog.Logger
+	elastic  *elastic.MessageIndexer
+	channels *channels.Channels
 }
 
-func NewGrpcServer(userService *user.Service, logger *slog.Logger) *GrpcServer {
+func NewGrpcServer(users *user.Users, logger *slog.Logger, elastic *elastic.MessageIndexer, channels *channels.Channels) *GrpcServer {
 	gs := &GrpcServer{
-		userService: userService,
-		logger:      logger,
+		users:    users,
+		logger:   logger,
+		elastic:  elastic,
+		channels: channels,
 	}
 	gs.server = grpc.NewServer(
 		grpc.UnaryInterceptor(gs.AuthInterceptor),
@@ -69,64 +72,60 @@ func (s *GrpcServer) AuthInterceptor(ctx context.Context, req interface{}, info 
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return nil, status.Errorf(codes.Unauthenticated, apperrors.MissingMetadata)
+		return nil, status.Error(codes.Unauthenticated, string(protocol.MissingMetadata))
 	}
 
 	authHeaders := md.Get("authorization")
 	if len(authHeaders) == 0 {
-		return nil, status.Errorf(codes.Unauthenticated, apperrors.MissingAuthorization)
+		return nil, status.Error(codes.Unauthenticated, string(protocol.MissingAuthorization))
 	}
 	authHeader := authHeaders[0]
 	username, password, ok := utils.ParseBasicAuth(authHeader)
 	if !ok {
-		return nil, status.Errorf(codes.PermissionDenied, apperrors.MissingOrInvalidCredentials)
+		return nil, status.Error(codes.PermissionDenied, string(protocol.MissingOrInvalidCredentials))
 	}
-	profile, err := s.userService.Login(ctx, username, password)
+	profile, err := s.users.Login(ctx, username, password)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserNotFound):
 			s.logger.Info("login attempt with wrong username", slog.String("username", username))
-			return nil, status.Errorf(codes.PermissionDenied, apperrors.InvalidUsernameOrPassword)
+			return nil, status.Error(codes.PermissionDenied, string(protocol.InvalidUsernameOrPassword))
 		case errors.Is(err, user.ErrInvalidPassword):
 			s.logger.Info("login attempt with wrong password", slog.String("username", username))
-			return nil, status.Errorf(codes.PermissionDenied, apperrors.InvalidUsernameOrPassword)
+			return nil, status.Error(codes.PermissionDenied, string(protocol.InvalidUsernameOrPassword))
 		default:
 			s.logger.Error("login internal service error", slog.String("username", username), slog.Any("error", err))
-			return nil, status.Errorf(codes.Internal, apperrors.InternalServer)
+			return nil, status.Error(codes.Internal, string(protocol.InternalServer))
 		}
 	}
-	newCtx := context.WithValue(ctx, UserContextKey, profile.ID)
+	ctx = context.WithValue(ctx, userIDKey, profile.ID)
+	newCtx := context.WithValue(ctx, usernameKey, username)
 	return handler(newCtx, req)
-}
-
-func getUserIDFromContext(ctx context.Context) (int64, bool) {
-	userID, ok := ctx.Value(UserContextKey).(int64)
-	return userID, ok
 }
 
 func (s *GrpcServer) RegisterProfile(ctx context.Context, in *pb.RegisterProfileRequest) (*pb.RegisterProfileResponse, error) {
 	if in.Username == "" {
-		return nil, status.Errorf(codes.InvalidArgument, apperrors.UserNameEmpty)
+		return nil, status.Error(codes.InvalidArgument, string(protocol.UserNameEmpty))
 	}
 	if in.Password == "" {
-		return nil, status.Errorf(codes.InvalidArgument, apperrors.PasswordEmpty)
+		return nil, status.Error(codes.InvalidArgument, string(protocol.PasswordEmpty))
 	}
 
-	req := user.CreateUserRequest{
+	req := protocol.CreateUserRequest{
 		Username: in.Username,
 		Password: in.Password,
 		Nick:     in.Nick,
 	}
-	userID, err := s.userService.Register(ctx, req)
+	userID, err := s.users.Register(ctx, req)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserOrNickAlreadyExists):
-			return nil, status.Errorf(codes.AlreadyExists, apperrors.UsernameNickTaken)
+			return nil, status.Error(codes.AlreadyExists, string(protocol.UsernameNickTaken))
 		case errors.Is(err, user.ErrMissingRequiredFields):
-			return nil, status.Errorf(codes.InvalidArgument, apperrors.MissingRequiredFields)
+			return nil, status.Error(codes.InvalidArgument, string(protocol.MissingRequiredFields))
 		default:
 			s.logger.Error("Registration failed", slog.Any("error", err))
-			return nil, status.Errorf(codes.Internal, apperrors.InternalServer)
+			return nil, status.Error(codes.Internal, string(protocol.InternalServer))
 		}
 	}
 	return &pb.RegisterProfileResponse{
@@ -135,26 +134,69 @@ func (s *GrpcServer) RegisterProfile(ctx context.Context, in *pb.RegisterProfile
 }
 
 func (s *GrpcServer) UpdateProfile(ctx context.Context, in *pb.UpdateProfileRequest) (*pb.Empty, error) {
-	userID, ok := getUserIDFromContext(ctx)
-	if !ok {
+	userID, err := GetUserIDFromContext(ctx)
+	if err != nil {
 		s.logger.Error("No authenticated user in context")
-		return nil, status.Errorf(codes.Unauthenticated, apperrors.AuthenticationRequired)
+		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
 	}
-	req := user.UpdateUserRequest{
+	req := protocol.UpdateUserRequest{
 		Nick: in.Nick,
 	}
 
-	_, err := s.userService.UpdateProfile(ctx, userID, req)
+	_, err = s.users.UpdateProfile(ctx, userID, req)
 	if err != nil {
 		s.logger.Error("Profile update failed", slog.Any("error", err))
 		switch {
 		case errors.Is(err, user.ErrNickAlreadyExists):
-			return nil, status.Errorf(codes.AlreadyExists, apperrors.NickAlreadyExists)
+			return nil, status.Error(codes.AlreadyExists, string(protocol.NickAlreadyExists))
 		default:
-			return nil, status.Errorf(codes.Internal, apperrors.InternalServer)
+			return nil, status.Error(codes.Internal, string(protocol.InternalServer))
 		}
 	}
 
 	s.logger.Debug("Profile updated successfully via gRPC", slog.Int64("userID", userID))
 	return &pb.Empty{}, nil
+}
+
+func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesRequest) (*pb.ListMessagesResponse, error) {
+	authenticatedUsername, err := GetUsernameFromContext(ctx)
+	if err != nil {
+		s.logger.Error("No authenticated user in context")
+		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
+	}
+
+	isUserAMember, err := s.channels.IsUserAMember(in.Channel, authenticatedUsername)
+	if err != nil {
+		switch {
+		case errors.Is(err, channels.ErrChannelDoesNotExist):
+			// do not inform about not existing channel - information disclosure
+			return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
+		default:
+			return nil, status.Error(codes.Internal, string(protocol.InternalServer))
+		}
+	}
+	if !isUserAMember {
+		return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
+	}
+	msgs, err := s.elastic.ListDocuments(in.Channel)
+	if err != nil {
+		s.logger.Error("Fetching document from ES failed", slog.Any("error", err))
+		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
+	}
+
+	protoMessages := make([]*pb.Message, 0, len(msgs))
+	for _, m := range msgs {
+		protoMessages = append(protoMessages, &pb.Message{
+			Id:        m.ID,
+			ChannelId: m.ChannelID,
+			AuthorId:  m.AuthorID,
+			Content:   m.Content,
+			CreatedAt: timestamppb.New(m.CreatedAt),
+		})
+	}
+
+	return &pb.ListMessagesResponse{
+		Messages: protoMessages,
+	}, nil
+
 }

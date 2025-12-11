@@ -15,19 +15,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	apperrors "github.com/zuczkows/room-chat/internal/errors"
-	"github.com/zuczkows/room-chat/internal/handlers"
+	c "github.com/zuczkows/room-chat/internal/channels"
+	"github.com/zuczkows/room-chat/internal/protocol"
+	"github.com/zuczkows/room-chat/internal/server"
 	"github.com/zuczkows/room-chat/internal/user"
 )
 
 func TestUserHandlerPositive(t *testing.T) {
 	userRepo := user.NewPostgresRepository(db)
-	userService := user.NewService(userRepo)
+	users := user.NewUsers(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := handlers.NewUserHandler(userService, logger)
+	handler := server.NewUserHandler(users, logger, esStorage, channels)
 
 	t.Run("successful registration", func(t *testing.T) {
-		createUserRequest := user.CreateUserRequest{
+		createUserRequest := protocol.CreateUserRequest{
 			Username: "test-user-1",
 			Nick:     "test-nick-1",
 			Password: "password2137!",
@@ -47,10 +48,11 @@ func TestUserHandlerPositive(t *testing.T) {
 
 func TestUserHandlerNegative(t *testing.T) {
 	userRepo := user.NewPostgresRepository(db)
-	userService := user.NewService(userRepo)
+	users := user.NewUsers(userRepo)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := handlers.NewUserHandler(userService, logger)
-	testUser1 := CreateTestUser1(t, userService)
+	channels := c.NewChannels(logger)
+	handler := server.NewUserHandler(users, logger, esStorage, channels)
+	testUser1 := CreateTestUser1(t, users)
 
 	tests := []struct {
 		name              string
@@ -60,33 +62,33 @@ func TestUserHandlerNegative(t *testing.T) {
 	}{
 		{
 			name: "duplicate username",
-			createUserRequest: user.CreateUserRequest{
+			createUserRequest: protocol.CreateUserRequest{
 				Username: testUser1.Username,
 				Nick:     "test-nick-1",
 				Password: "password2137!",
 			},
 			expectedStatus: http.StatusConflict,
-			expectedError:  apperrors.UsernameNickTaken,
+			expectedError:  "Username or nickname is already taken.",
 		},
 		{
 			name: "duplicate Nick",
-			createUserRequest: user.CreateUserRequest{
+			createUserRequest: protocol.CreateUserRequest{
 				Username: "newuser",
 				Nick:     testUser1.Nick,
 				Password: "password123",
 			},
 			expectedStatus: http.StatusConflict,
-			expectedError:  apperrors.UsernameNickTaken,
+			expectedError:  "Username or nickname is already taken.",
 		},
 		{
 			name: "missing required fields",
-			createUserRequest: user.CreateUserRequest{
+			createUserRequest: protocol.CreateUserRequest{
 				Username: "",
 				Nick:     "testnick",
 				Password: "password123",
 			},
 			expectedStatus: http.StatusUnprocessableEntity,
-			expectedError:  apperrors.UserNameEmpty,
+			expectedError:  "Username cannot be empty.",
 		},
 		{
 			name:              "invalid JSON",

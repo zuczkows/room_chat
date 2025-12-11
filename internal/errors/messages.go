@@ -1,15 +1,21 @@
 package apperrors
 
-const (
-	UsernameNickTaken           = "Username or nickname is already taken."
-	InternalServer              = "Something went wrong on our side."
-	MissingRequiredFields       = "Some required fields are missing."
-	UserNameEmpty               = "Username can not be empty."
-	PasswordEmpty               = "Password can not be empty."
-	InvalidUsernameOrPassword   = "Invalid username or password."
-	NickAlreadyExists           = "Nick already exists."
-	AuthenticationRequired      = "Authentication required."
-	MissingOrInvalidCredentials = "Missing or invalid credentials."
-	MissingMetadata             = "Missing metadata."
-	MissingAuthorization        = "Missing authorization header."
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/zuczkows/room-chat/internal/protocol"
 )
+
+type ErrorResponse struct {
+	Error protocol.UserErrMessage `json:"error"`
+}
+
+func SendError(w http.ResponseWriter, status int, msg protocol.UserErrMessage) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+
+	json.NewEncoder(w).Encode(ErrorResponse{
+		Error: msg,
+	})
+}

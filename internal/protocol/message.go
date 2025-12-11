@@ -1,12 +1,15 @@
 package protocol
 
 import (
+	"time"
+
 	"github.com/go-playground/validator/v10"
 )
 
 type MessageAction string
 type MessageType string
 type ErrorType string
+type UserErrMessage string
 
 const (
 	MesageActionJoin    MessageAction = "join"
@@ -31,15 +34,35 @@ const (
 	ConflictError       ErrorType = "conflict"
 )
 
+const (
+	UsernameNickTaken           UserErrMessage = "Username or nickname is already taken."
+	InternalServer              UserErrMessage = "Something went wrong on our side."
+	MissingRequiredFields       UserErrMessage = "Some required fields are missing."
+	UserNameEmpty               UserErrMessage = "Username cannot be empty."
+	PasswordEmpty               UserErrMessage = "Password cannot be empty."
+	InvalidUsernameOrPassword   UserErrMessage = "Invalid username or password."
+	NickAlreadyExists           UserErrMessage = "Nick already exists."
+	AuthenticationRequired      UserErrMessage = "Authentication required."
+	MissingOrInvalidCredentials UserErrMessage = "Missing or invalid credentials."
+	MissingMetadata             UserErrMessage = "Missing metadata."
+	MissingAuthorization        UserErrMessage = "Missing authorization header."
+	NotMemberOfChannel          UserErrMessage = "You are not a member of this channel."
+	InvalidJSON                 UserErrMessage = "Invalid JSON."
+	AuthorizationRequired       UserErrMessage = "Authorization required."
+	InvalidCredentials          UserErrMessage = "Invalid credentials."
+)
+
 var validate = validator.New()
 
 type Message struct {
+	ID        string        `json:"message_id,omitempty"`
 	Action    MessageAction `json:"action" validate:"required,oneof=join leave message login"`
 	Type      MessageType   `json:"type,omitempty"`
 	ClientID  string        `json:"-"`
 	User      string        `json:"user,omitempty"`
 	RequestID string        `json:"request_id,omitempty"`
 	Channel   string        `json:"channel,omitempty"`
+	CreatedAt time.Time     `json:"created_at"`
 	Response  *Response     `json:"response,omitempty"`
 	Push      *Push         `json:"push,omitempty"`
 	Request
@@ -63,6 +86,22 @@ type Request struct {
 type ErrorDetails struct {
 	Type    ErrorType `json:"type"`
 	Message string    `json:"message"`
+}
+
+type RegisterResponse struct {
+	ID int64 `json:"id"`
+}
+
+// no email verification for this app so no email in struct
+type CreateUserRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Nick     string `json:"nick"`
+}
+
+// only nick can be updated at this point
+type UpdateUserRequest struct {
+	Nick string `json:"nick"`
 }
 
 // note from zuczkows - I think I should manually check struct and return nice

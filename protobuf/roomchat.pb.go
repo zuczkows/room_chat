@@ -9,6 +9,7 @@ package room_chat
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -205,11 +206,175 @@ func (x *UpdateProfileRequest) GetNick() string {
 	return ""
 }
 
+type ListMessagesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Channel       string                 `protobuf:"bytes,1,opt,name=channel,proto3" json:"channel,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMessagesRequest) Reset() {
+	*x = ListMessagesRequest{}
+	mi := &file_protobuf_roomchat_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMessagesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMessagesRequest) ProtoMessage() {}
+
+func (x *ListMessagesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_protobuf_roomchat_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMessagesRequest.ProtoReflect.Descriptor instead.
+func (*ListMessagesRequest) Descriptor() ([]byte, []int) {
+	return file_protobuf_roomchat_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ListMessagesRequest) GetChannel() string {
+	if x != nil {
+		return x.Channel
+	}
+	return ""
+}
+
+type ListMessagesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Messages      []*Message             `protobuf:"bytes,1,rep,name=messages,proto3" json:"messages,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListMessagesResponse) Reset() {
+	*x = ListMessagesResponse{}
+	mi := &file_protobuf_roomchat_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListMessagesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListMessagesResponse) ProtoMessage() {}
+
+func (x *ListMessagesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_protobuf_roomchat_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListMessagesResponse.ProtoReflect.Descriptor instead.
+func (*ListMessagesResponse) Descriptor() ([]byte, []int) {
+	return file_protobuf_roomchat_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ListMessagesResponse) GetMessages() []*Message {
+	if x != nil {
+		return x.Messages
+	}
+	return nil
+}
+
+type Message struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ChannelId     string                 `protobuf:"bytes,2,opt,name=channel_id,json=channelId,proto3" json:"channel_id,omitempty"`
+	AuthorId      string                 `protobuf:"bytes,3,opt,name=author_id,json=authorId,proto3" json:"author_id,omitempty"`
+	Content       string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Message) Reset() {
+	*x = Message{}
+	mi := &file_protobuf_roomchat_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Message) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Message) ProtoMessage() {}
+
+func (x *Message) ProtoReflect() protoreflect.Message {
+	mi := &file_protobuf_roomchat_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Message.ProtoReflect.Descriptor instead.
+func (*Message) Descriptor() ([]byte, []int) {
+	return file_protobuf_roomchat_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *Message) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Message) GetChannelId() string {
+	if x != nil {
+		return x.ChannelId
+	}
+	return ""
+}
+
+func (x *Message) GetAuthorId() string {
+	if x != nil {
+		return x.AuthorId
+	}
+	return ""
+}
+
+func (x *Message) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
+func (x *Message) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
 var File_protobuf_roomchat_proto protoreflect.FileDescriptor
 
 const file_protobuf_roomchat_proto_rawDesc = "" +
 	"\n" +
-	"\x17protobuf/roomchat.proto\x12\troom_chat\"\a\n" +
+	"\x17protobuf/roomchat.proto\x12\troom_chat\x1a\x1fgoogle/protobuf/timestamp.proto\"\a\n" +
 	"\x05Empty\"d\n" +
 	"\x16RegisterProfileRequest\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
@@ -218,10 +383,23 @@ const file_protobuf_roomchat_proto_rawDesc = "" +
 	"\x17RegisterProfileResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\"*\n" +
 	"\x14UpdateProfileRequest\x12\x12\n" +
-	"\x04nick\x18\x01 \x01(\tR\x04nick2\xa8\x01\n" +
+	"\x04nick\x18\x01 \x01(\tR\x04nick\"/\n" +
+	"\x13ListMessagesRequest\x12\x18\n" +
+	"\achannel\x18\x01 \x01(\tR\achannel\"F\n" +
+	"\x14ListMessagesResponse\x12.\n" +
+	"\bmessages\x18\x01 \x03(\v2\x12.room_chat.MessageR\bmessages\"\xaa\x01\n" +
+	"\aMessage\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
+	"\n" +
+	"channel_id\x18\x02 \x01(\tR\tchannelId\x12\x1b\n" +
+	"\tauthor_id\x18\x03 \x01(\tR\bauthorId\x12\x18\n" +
+	"\acontent\x18\x04 \x01(\tR\acontent\x129\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt2\xf9\x01\n" +
 	"\bRoomChat\x12X\n" +
 	"\x0fRegisterProfile\x12!.room_chat.RegisterProfileRequest\x1a\".room_chat.RegisterProfileResponse\x12B\n" +
-	"\rUpdateProfile\x12\x1f.room_chat.UpdateProfileRequest\x1a\x10.room_chat.EmptyB\x1fZ\x1dgithub.com/zuczkows/room_chatb\x06proto3"
+	"\rUpdateProfile\x12\x1f.room_chat.UpdateProfileRequest\x1a\x10.room_chat.Empty\x12O\n" +
+	"\fListMessages\x12\x1e.room_chat.ListMessagesRequest\x1a\x1f.room_chat.ListMessagesResponseB\x1fZ\x1dgithub.com/zuczkows/room-chatb\x06proto3"
 
 var (
 	file_protobuf_roomchat_proto_rawDescOnce sync.Once
@@ -235,23 +413,31 @@ func file_protobuf_roomchat_proto_rawDescGZIP() []byte {
 	return file_protobuf_roomchat_proto_rawDescData
 }
 
-var file_protobuf_roomchat_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_protobuf_roomchat_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_protobuf_roomchat_proto_goTypes = []any{
 	(*Empty)(nil),                   // 0: room_chat.Empty
 	(*RegisterProfileRequest)(nil),  // 1: room_chat.RegisterProfileRequest
 	(*RegisterProfileResponse)(nil), // 2: room_chat.RegisterProfileResponse
 	(*UpdateProfileRequest)(nil),    // 3: room_chat.UpdateProfileRequest
+	(*ListMessagesRequest)(nil),     // 4: room_chat.ListMessagesRequest
+	(*ListMessagesResponse)(nil),    // 5: room_chat.ListMessagesResponse
+	(*Message)(nil),                 // 6: room_chat.Message
+	(*timestamppb.Timestamp)(nil),   // 7: google.protobuf.Timestamp
 }
 var file_protobuf_roomchat_proto_depIdxs = []int32{
-	1, // 0: room_chat.RoomChat.RegisterProfile:input_type -> room_chat.RegisterProfileRequest
-	3, // 1: room_chat.RoomChat.UpdateProfile:input_type -> room_chat.UpdateProfileRequest
-	2, // 2: room_chat.RoomChat.RegisterProfile:output_type -> room_chat.RegisterProfileResponse
-	0, // 3: room_chat.RoomChat.UpdateProfile:output_type -> room_chat.Empty
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
-	0, // [0:0] is the sub-list for extension type_name
-	0, // [0:0] is the sub-list for extension extendee
-	0, // [0:0] is the sub-list for field type_name
+	6, // 0: room_chat.ListMessagesResponse.messages:type_name -> room_chat.Message
+	7, // 1: room_chat.Message.created_at:type_name -> google.protobuf.Timestamp
+	1, // 2: room_chat.RoomChat.RegisterProfile:input_type -> room_chat.RegisterProfileRequest
+	3, // 3: room_chat.RoomChat.UpdateProfile:input_type -> room_chat.UpdateProfileRequest
+	4, // 4: room_chat.RoomChat.ListMessages:input_type -> room_chat.ListMessagesRequest
+	2, // 5: room_chat.RoomChat.RegisterProfile:output_type -> room_chat.RegisterProfileResponse
+	0, // 6: room_chat.RoomChat.UpdateProfile:output_type -> room_chat.Empty
+	5, // 7: room_chat.RoomChat.ListMessages:output_type -> room_chat.ListMessagesResponse
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_protobuf_roomchat_proto_init() }
@@ -265,7 +451,7 @@ func file_protobuf_roomchat_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protobuf_roomchat_proto_rawDesc), len(file_protobuf_roomchat_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"testing"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -16,8 +17,9 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	apperrors "github.com/zuczkows/room-chat/internal/errors"
+	"github.com/zuczkows/room-chat/internal/utils"
 	pb "github.com/zuczkows/room-chat/protobuf"
+	"github.com/zuczkows/room-chat/test/internal/websocket"
 )
 
 func TestGrpc(t *testing.T) {
@@ -26,13 +28,30 @@ func TestGrpc(t *testing.T) {
 		t.Fatalf("gRPC server failed to start: %v", err)
 	default:
 	}
-	testUser1 := CreateTestUser1(t, userService)
+	testUser1 := CreateTestUser1(t, users)
 
 	grpcConn, err := grpc.NewClient(fmt.Sprintf("%s:%d", grpcAddr, grpcPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	defer grpcConn.Close()
 
 	client := pb.NewRoomChatClient(grpcConn)
+
+	wsUser1, err := websocket.NewRoomChatWS("localhost:8080", time.Second*10, "test-user")
+	require.NoError(t, err)
+	defer wsUser1.Close()
+
+	accessTokenUser1 := utils.GetEncodedBase64Token(testUser1.Username, testUser1.Password)
+	_, err = wsUser1.Login(accessTokenUser1)
+	require.NoError(t, err)
+
+	channelUser1 := "channel-user-1"
+	_, err = wsUser1.Join(channelUser1)
+	require.NoError(t, err)
+
+	testMessageUser1 := "testMessageUser1"
+	_, err = wsUser1.SendMessage(testMessageUser1, channelUser1)
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond) // ES time to index
 
 	t.Run("successful registration", func(t *testing.T) {
 		req := &pb.RegisterProfileRequest{
@@ -52,7 +71,7 @@ func TestGrpc(t *testing.T) {
 			Nick:     "test-grpc",
 		}
 		_, err := client.RegisterProfile(context.Background(), req)
-		AssertGrpcError(t, err, apperrors.UsernameNickTaken, codes.AlreadyExists)
+		AssertGrpcError(t, err, "Username or nickname is already taken.", codes.AlreadyExists)
 	})
 
 	t.Run("missing required argument", func(t *testing.T) {
@@ -61,7 +80,7 @@ func TestGrpc(t *testing.T) {
 			Nick:     "missing-required-argument",
 		}
 		_, err := client.RegisterProfile(context.Background(), req)
-		AssertGrpcError(t, err, apperrors.PasswordEmpty, codes.InvalidArgument)
+		AssertGrpcError(t, err, "Password cannot be empty.", codes.InvalidArgument)
 	})
 
 	t.Run("UpdateProfile without authorization", func(t *testing.T) {
@@ -69,7 +88,7 @@ func TestGrpc(t *testing.T) {
 			Nick: "without auth",
 		}
 		_, err := client.UpdateProfile(context.Background(), req)
-		AssertGrpcError(t, err, apperrors.MissingAuthorization, codes.Unauthenticated)
+		AssertGrpcError(t, err, "Missing authorization header.", codes.Unauthenticated)
 	})
 
 	t.Run("UpdateProfile with invalid credentials", func(t *testing.T) {
@@ -81,7 +100,7 @@ func TestGrpc(t *testing.T) {
 		}
 
 		_, err := client.UpdateProfile(ctx, req)
-		AssertGrpcError(t, err, apperrors.InvalidUsernameOrPassword, codes.PermissionDenied)
+		AssertGrpcError(t, err, "Invalid username or password.", codes.PermissionDenied)
 	})
 	t.Run("UpdateProfile with valid credentials", func(t *testing.T) {
 		auth := "Basic " + basicAuth(testUser1.Username, testUser1.Password)
@@ -94,6 +113,28 @@ func TestGrpc(t *testing.T) {
 		_, err := client.UpdateProfile(ctx, req)
 		require.NoError(t, err)
 	})
+
+	t.Run("user can get messages from channel he belongs to", func(t *testing.T) {
+		auth := "Basic " + basicAuth(testUser1.Username, testUser1.Password)
+		ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", auth)
+
+		req := &pb.ListMessagesRequest{
+			Channel: channelUser1,
+		}
+		response, err := client.ListMessages(ctx, req)
+		require.NoError(t, err)
+
+		require.Equal(t, testMessageUser1, response.Messages[0].Content)
+	})
+
+	t.Run("ListMessages without authorization", func(t *testing.T) {
+		req := &pb.ListMessagesRequest{
+			Channel: "without auth",
+		}
+		_, err := client.ListMessages(context.Background(), req)
+		AssertGrpcError(t, err, "Missing authorization header.", codes.Unauthenticated)
+	})
+
 }
 
 func basicAuth(username, password string) string {

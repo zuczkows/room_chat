@@ -11,11 +11,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/zuczkows/room-chat/internal/chat"
+	"github.com/zuczkows/room-chat/internal/channels"
 	"github.com/zuczkows/room-chat/internal/config"
 	"github.com/zuczkows/room-chat/internal/connection"
-	"github.com/zuczkows/room-chat/internal/handlers"
-	"github.com/zuczkows/room-chat/internal/middleware"
+	"github.com/zuczkows/room-chat/internal/elastic"
 	"github.com/zuczkows/room-chat/internal/protocol"
 	"github.com/zuczkows/room-chat/internal/user"
 	"github.com/zuczkows/room-chat/internal/utils"
@@ -50,13 +49,12 @@ func createOriginChecker(cfg *config.Config) func(*http.Request) bool {
 	}
 }
 
-type Channels map[string]*chat.Channel
 type Clients map[string]*connection.Client
 
 type Server struct {
-	channels        Channels
 	clients         Clients
 	userManager     *user.SessionManager
+	channels        *channels.Channels
 	register        chan *connection.Client
 	unregister      chan *connection.Client
 	dispatchMessage chan protocol.Message
@@ -64,31 +62,34 @@ type Server struct {
 	logger          *slog.Logger
 	config          *config.Config
 	server          *http.Server
-	userService     *user.Service
+	users           *user.Users
+	elastic         *elastic.MessageIndexer
 }
 
-func NewServer(logger *slog.Logger, cfg *config.Config, userService *user.Service) *Server {
+func NewServer(logger *slog.Logger, cfg *config.Config, users *user.Users, elastic *elastic.MessageIndexer, channels *channels.Channels) *Server {
 	return &Server{
-		channels:        make(map[string]*chat.Channel),
 		clients:         make(Clients),
 		userManager:     user.NewSessionManager(logger),
+		channels:        channels,
 		register:        make(chan *connection.Client),
 		unregister:      make(chan *connection.Client),
 		dispatchMessage: make(chan protocol.Message),
 		logger:          logger,
 		config:          cfg,
-		userService:     userService,
+		users:           users,
+		elastic:         elastic,
 	}
 }
 
 func (s *Server) Start() {
 	mux := http.NewServeMux()
-	userHandler := handlers.NewUserHandler(s.userService, s.logger)
-	authMiddleware := middleware.NewAuthMiddleware(s.userService, s.logger)
+	userHandler := NewUserHandler(s.users, s.logger, s.elastic, s.channels)
+	authMiddleware := NewAuthMiddleware(s.users, s.logger)
 
 	mux.HandleFunc("GET /ws", s.ServeWS)
 	mux.HandleFunc("POST /api/register", userHandler.HandleRegister)
 	mux.Handle("PUT /api/profile", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleUpdate)))
+	mux.Handle("GET /channel/messages", authMiddleware.BasicAuth(http.HandlerFunc(userHandler.HandleListMessages)))
 	s.server = &http.Server{
 		Addr:         fmt.Sprintf(":%d", s.config.Server.Port),
 		Handler:      mux,
@@ -162,7 +163,7 @@ func (s *Server) handleLogin(message protocol.Message) {
 		s.sendError(senderClient, MissingOrInvalidCredentials, message.RequestID, protocol.AuthorizationError)
 		return
 	}
-	profile, err := s.userService.Login(context.Background(), username, password)
+	profile, err := s.users.Login(context.Background(), username, password)
 	if err != nil {
 		switch {
 		case errors.Is(err, user.ErrUserNotFound):
@@ -203,18 +204,13 @@ func (s *Server) handleJoinChannel(message protocol.Message) {
 		s.logger.Error("Client not found for login", slog.String("clientID", message.ClientID))
 		return
 	}
-	channel, exists := s.channels[message.Channel]
-	if !exists {
-		s.channels[message.Channel] = chat.NewChannel(message.Channel, s.logger, s.userManager)
-		channel = s.channels[message.Channel]
-		s.logger.Info("Created new channel", slog.String("channel", message.Channel))
-	}
+	channel := s.channels.GetOrCreate(message.Channel, s.logger, s.userManager, s.elastic)
 
-	err = channel.AddUser(user.Username())
+	err = s.channels.AddUser(message.Channel, user.Username())
 	if err != nil {
 		s.mu.Unlock()
 		switch {
-		case errors.Is(err, chat.ErrUserAlreadyExists):
+		case errors.Is(err, channels.ErrUserAlreadyExists):
 			s.sendError(senderClient, AlreadyInChannel, message.RequestID, protocol.ConflictError)
 		default:
 			s.logger.Error("unexpected error adding user to channel", slog.String("user", user.Username()), slog.String("channel", message.Channel), slog.Any("error", err))
@@ -238,22 +234,35 @@ func (s *Server) handleSendMessage(message protocol.Message) {
 		return
 	}
 
-	channel, exists := s.channels[message.Channel]
+	channel, err := s.channels.Get(message.Channel)
 	s.mu.RUnlock()
 
-	if !exists {
-		s.sendError(senderClient,
-			fmt.Sprintf("Channel does not exist: %s", message.Channel), message.RequestID, protocol.ValidationError)
-		return
+	if err != nil {
+		switch {
+		case errors.Is(err, channels.ErrChannelDoesNotExist):
+			// do not inform about not existing channel - information disclosure
+			s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, protocol.ValidationError)
+			return
+		default:
+			s.sendError(senderClient, "Internal server error", message.RequestID, protocol.InternalServerError)
+			return
+		}
 	}
 
 	username := senderClient.GetUser()
+
 	if !channel.HasUser(username) {
 		s.sendError(senderClient, fmt.Sprintf("You are not a member of this channel: %s", message.Channel), message.RequestID, protocol.ForbiddenError)
 		return
 	}
+	err = s.elastic.IndexMessage(message)
+	if err != nil {
+		s.logger.Error("failed to index message", slog.String("id", message.ID), slog.Any("error", err))
+		s.sendError(senderClient, InternalServerError, message.RequestID, protocol.InternalServerError)
+		return
+	}
 	s.sendResponse(senderClient, "message sent", message.RequestID)
-	channel.SendMessage(message.User, message.Request.Content)
+	channel.SendMessage(message)
 	s.logger.Info("Message sent to channel", slog.String("channel", message.Channel), slog.String("user", username))
 }
 
@@ -267,8 +276,8 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 		return
 	}
 
-	channel, exists := s.channels[channelName]
-	if !exists {
+	channel, err := s.channels.Get(message.Channel)
+	if err != nil {
 		s.mu.RUnlock()
 		s.sendError(senderClient, fmt.Sprintf("Channel %s does not exist", channelName), message.RequestID, protocol.ValidationError)
 		return
@@ -283,7 +292,7 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 
 	if err := channel.RemoveUser(username); err != nil {
 		switch {
-		case errors.Is(err, chat.ErrNotAMember):
+		case errors.Is(err, channels.ErrNotAMember):
 			s.logger.Error("trying to remove non member from a channel", slog.String("user", username), slog.String("channel", channelName))
 			return
 		default:
@@ -302,7 +311,7 @@ func (s *Server) handleLeaveChannel(message protocol.Message) {
 
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
-		delete(s.channels, channelName)
+		s.channels.Delete(channelName)
 		s.logger.Info("Channel deleted", slog.String("channel", channelName))
 	}
 	s.mu.Unlock()
@@ -374,16 +383,15 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 
 	for _, channelName := range user.GetChannels() {
 		s.mu.RLock()
-		channel, exists := s.channels[channelName]
-
-		if !exists {
+		channel, err := s.channels.Get(channelName)
+		if err != nil {
 			s.logger.Warn("lost synchronization - user belongs to non existing channel", slog.String("username", userName), slog.String("channel", channelName))
 			user.RemoveChannel(channelName)
 			continue
 		}
 		if err := channel.RemoveUser(userName); err != nil {
 			switch {
-			case errors.Is(err, chat.ErrNotAMember):
+			case errors.Is(err, channels.ErrNotAMember):
 				s.logger.Warn("trying to remove non member from a channel", slog.String("user", userName), slog.String("channel", channelName))
 			default:
 				s.logger.Error("unexpected error while removing member", slog.String("user", userName), slog.Any("error", err))
@@ -399,11 +407,10 @@ func (s *Server) removeUserFromAllChannels(user *user.User) {
 	}
 }
 
-func (s *Server) cleanupEmptyChannel(channelName string, channel *chat.Channel) {
+func (s *Server) cleanupEmptyChannel(channelName string, channel *channels.Channel) {
 	s.mu.Lock()
 	if channel.ActiveUsersCount() == 0 {
-		delete(s.channels, channelName)
-		s.logger.Info("Channel deleted", slog.String("channel", channelName))
+		s.channels.Delete(channelName)
 	}
 	s.mu.Unlock()
 }
