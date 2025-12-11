@@ -9,6 +9,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -36,7 +37,6 @@ var (
 	esStorage *elastic.MessageIndexer
 	channels  *c.Channels
 	db        *sql.DB
-	esClient  *es7.Client
 	grpcErrCh <-chan error
 )
 
@@ -106,6 +106,12 @@ func SetupPG() (*sql.DB, func(), error) {
 	}, nil
 }
 
+func initES(host, indexName, username, password string) error {
+	ESMigrationPath := filepath.Join("..", "migrations", "es", "init_index_up.sh")
+	cmd := exec.Command("bash", ESMigrationPath, host, indexName, username, password)
+	return cmd.Run()
+}
+
 func SetupES(logger *slog.Logger) (*elastic.MessageIndexer, func(), error) {
 	esCtx, esCancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer esCancel()
@@ -130,7 +136,10 @@ func SetupES(logger *slog.Logger) (*elastic.MessageIndexer, func(), error) {
 		return nil, nil, nil
 	}
 	elastic := elastic.NewMessageIndexer(esClient, logger, "messages")
-	elastic.CreateIndex()
+	if err := initES(elasticsearchContainer.Settings.Address, "messages", "elastic", elasticsearchContainer.Settings.Password); err != nil {
+		log.Printf("ES migration failed: %s", err)
+		return nil, nil, err
+	}
 
 	return elastic, func() {
 		err = testcontainers.TerminateContainer(elasticsearchContainer)

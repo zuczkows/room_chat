@@ -35,6 +35,8 @@ services:
     image: elasticsearch:7.17.9
     environment:
       discovery.type: single-node
+      ELASTIC_PASSWORD: admin
+      xpack.security.enabled: "true"
     ports:
       - "9200:9200"
     volumes:
@@ -46,7 +48,7 @@ services:
       retries: 15
   es_migrate:
     image: curlimages/curl:8.2.1
-    command: sh /migrations/init_index_up.sh http://elastic:9200 messages
+    command: sh /migrations/init_index_up.sh http://elastic:9200 messages elastic admin
     volumes:
       - ./migrations/es:/migrations
     restart: on-failure

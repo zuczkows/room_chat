@@ -36,32 +36,6 @@ type Hit struct {
 	Source IndexedMessage `json:"_source"`
 }
 
-type CreateIndexRequest struct {
-	Settings ESSettings `json:"settings"`
-	Mappings ESMappings `json:"mappings"`
-}
-
-type ESSettings struct {
-	NumberOfShards   int `json:"number_of_shards"`
-	NumberOfReplicas int `json:"number_of_replicas"`
-}
-
-type ESMappings struct {
-	Properties ESMappingProperties `json:"properties"`
-}
-
-type ESMappingProperties struct {
-	MessageID ESField `json:"message_id"`
-	ChannelID ESField `json:"channel_id"`
-	AuthorID  ESField `json:"author_id"`
-	Content   ESField `json:"content"`
-	CreatedAt ESField `json:"created_at"`
-}
-
-type ESField struct {
-	Type string `json:"type"`
-}
-
 type SearchQuery struct {
 	Query ESQuery     `json:"query"`
 	Sort  []SortQuery `json:"sort"`
@@ -179,40 +153,4 @@ func (es *MessageIndexer) ListDocuments(channel string) ([]IndexedMessage, error
 		messages = append(messages, h.Source)
 	}
 	return messages, nil
-}
-
-// NOTE(zuczkows): Required for integration tests - without that first IndexMessage creates mapping automatically and ListDocuments does not work properly
-func (es *MessageIndexer) CreateIndex() error {
-	es.logger.Debug("Creating ES Index", slog.String("index", es.index))
-	body := CreateIndexRequest{
-		Settings: ESSettings{
-			NumberOfShards:   2,
-			NumberOfReplicas: 0,
-		},
-		Mappings: ESMappings{
-			Properties: ESMappingProperties{
-				MessageID: ESField{Type: "keyword"},
-				ChannelID: ESField{Type: "keyword"},
-				AuthorID:  ESField{Type: "keyword"},
-				Content:   ESField{Type: "text"},
-				CreatedAt: ESField{Type: "date"},
-			},
-		},
-	}
-
-	byteBody, err := json.Marshal(body)
-	if err != nil {
-		es.logger.Error("error marshaling CreateIndex body", slog.Any("error", err))
-		return fmt.Errorf("marshal error: %w", err)
-	}
-
-	res, err := es.db.Indices.Create(
-		es.index,
-		es.db.Indices.Create.WithBody(bytes.NewReader(byteBody)),
-	)
-	if err != nil {
-		return fmt.Errorf("error creating index: %w", err)
-	}
-	defer res.Body.Close()
-	return nil
 }
