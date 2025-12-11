@@ -51,14 +51,14 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	defer cleanupPG()
-	esClient, cleanupES, err = SetupES()
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	esStorage, cleanupES, err = SetupES(logger)
 	if err != nil {
 		log.Fatalf("Error setting up ES: %v", err)
 		os.Exit(1)
 	}
 	defer cleanupES()
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	users, esStorage, channels = SetupServer(db, logger)
+	users, channels = SetupServer(db, esStorage, logger)
 	_, grpcErrCh = SetupGrpc(logger, esStorage, channels)
 
 	exitCode := m.Run()
@@ -68,7 +68,7 @@ func TestMain(m *testing.M) {
 func SetupPG() (*sql.DB, func(), error) {
 	ctx := context.Background()
 
-	migrationPath := filepath.Join("..", "migrations", "001_create_users_table.up.sql")
+	migrationPath := filepath.Join("..", "migrations", "sql", "001_create_users_table.up.sql")
 	postgresContainer, err := pgc.Run(ctx,
 		"postgres:16-alpine",
 		pgc.WithInitScripts(migrationPath),
@@ -106,7 +106,7 @@ func SetupPG() (*sql.DB, func(), error) {
 	}, nil
 }
 
-func SetupES() (*es7.Client, func(), error) {
+func SetupES(logger *slog.Logger) (*elastic.MessageIndexer, func(), error) {
 	esCtx, esCancel := context.WithTimeout(context.Background(), 1*time.Minute)
 	defer esCancel()
 	elasticsearchContainer, err := esc.Run(esCtx, "docker.elastic.co/elasticsearch/elasticsearch:7.9.2",
@@ -129,8 +129,10 @@ func SetupES() (*es7.Client, func(), error) {
 		log.Printf("error creating the client: %s", err)
 		return nil, nil, nil
 	}
+	elastic := elastic.NewMessageIndexer(esClient, logger, "messages")
+	elastic.CreateIndex()
 
-	return esClient, func() {
+	return elastic, func() {
 		err = testcontainers.TerminateContainer(elasticsearchContainer)
 		if err != nil {
 			log.Printf("failed to terminate ES container: %s", err)
@@ -139,13 +141,11 @@ func SetupES() (*es7.Client, func(), error) {
 	}, nil
 }
 
-func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Users, *elastic.MessageIndexer, *c.Channels) {
+func SetupServer(db *sql.DB, elastic *elastic.MessageIndexer, logger *slog.Logger) (*user.Users, *c.Channels) {
 	userRepo := user.NewPostgresRepository(db)
 	users := user.NewUsers(userRepo)
 	logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 	channels := c.NewChannels(logger)
-	elastic := elastic.NewMessageIndexer(esClient, logger, "messages")
-	elastic.CreateIndex()
 
 	cfg := &config.Config{
 		Server: config.ServerConfig{
@@ -162,7 +162,7 @@ func SetupServer(db *sql.DB, logger *slog.Logger) (*user.Users, *elastic.Message
 	go server.Start()
 
 	time.Sleep(time.Millisecond * 20)
-	return users, elastic, channels
+	return users, channels
 }
 
 func SetupGrpc(logger *slog.Logger, elastic *elastic.MessageIndexer, channels *c.Channels) (*server.GrpcServer, <-chan error) {
