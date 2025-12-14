@@ -7,12 +7,13 @@
 package room_chat
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -209,6 +210,7 @@ func (x *UpdateProfileRequest) GetNick() string {
 type ListMessagesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Channel       string                 `protobuf:"bytes,1,opt,name=channel,proto3" json:"channel,omitempty"`
+	AuthorId      *string                `protobuf:"bytes,2,opt,name=author_id,json=authorId,proto3,oneof" json:"author_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -246,6 +248,13 @@ func (*ListMessagesRequest) Descriptor() ([]byte, []int) {
 func (x *ListMessagesRequest) GetChannel() string {
 	if x != nil {
 		return x.Channel
+	}
+	return ""
+}
+
+func (x *ListMessagesRequest) GetAuthorId() string {
+	if x != nil && x.AuthorId != nil {
+		return *x.AuthorId
 	}
 	return ""
 }
@@ -383,9 +392,12 @@ const file_protobuf_roomchat_proto_rawDesc = "" +
 	"\x17RegisterProfileResponse\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\"*\n" +
 	"\x14UpdateProfileRequest\x12\x12\n" +
-	"\x04nick\x18\x01 \x01(\tR\x04nick\"/\n" +
+	"\x04nick\x18\x01 \x01(\tR\x04nick\"_\n" +
 	"\x13ListMessagesRequest\x12\x18\n" +
-	"\achannel\x18\x01 \x01(\tR\achannel\"F\n" +
+	"\achannel\x18\x01 \x01(\tR\achannel\x12 \n" +
+	"\tauthor_id\x18\x02 \x01(\tH\x00R\bauthorId\x88\x01\x01B\f\n" +
+	"\n" +
+	"_author_id\"F\n" +
 	"\x14ListMessagesResponse\x12.\n" +
 	"\bmessages\x18\x01 \x03(\v2\x12.room_chat.MessageR\bmessages\"\xaa\x01\n" +
 	"\aMessage\x12\x0e\n" +
@@ -445,6 +457,7 @@ func file_protobuf_roomchat_proto_init() {
 	if File_protobuf_roomchat_proto != nil {
 		return
 	}
+	file_protobuf_roomchat_proto_msgTypes[4].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

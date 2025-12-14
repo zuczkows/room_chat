@@ -20,7 +20,7 @@ services:
   pg-migrate:
     image: migrate/migrate
     volumes:
-      - ./migrations:/migrations
+      - ./migrations/sql:/migrations
     command: [
       "-path", "/migrations",
       "-database", "postgres://testuser:${DB_PASSWORD:-password}@postgres:5432/chat?sslmode=disable",
@@ -60,6 +60,8 @@ services:
     image: docker.elastic.co/kibana/kibana:7.17.9
     environment:
       ELASTICSEARCH_HOSTS: "http://elastic:9200"
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: admin
     ports:
       - "5601:5601"
     depends_on:

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"time"
 
@@ -37,16 +38,20 @@ type Hit struct {
 }
 
 type SearchQuery struct {
-	Query ESQuery     `json:"query"`
+	Query Query       `json:"query"`
 	Sort  []SortQuery `json:"sort"`
 }
 
-type ESQuery struct {
-	Term Term `json:"term"`
+type Query struct {
+	Bool *BoolQuery `json:"bool,omitempty"`
 }
 
-type Term struct {
-	ChannelID string `json:"channel_id"`
+type BoolQuery struct {
+	Filter []QueryClause `json:"filter,omitempty"`
+}
+
+type QueryClause struct {
+	Term map[string]string `json:"term,omitempty"`
 }
 
 type SortQuery struct {
@@ -55,6 +60,18 @@ type SortQuery struct {
 
 type SortOrder struct {
 	Order string `json:"order"`
+}
+
+type ListOptions struct {
+	AuthorID string `json:"author_id"`
+}
+
+type ListOption func(*ListOptions)
+
+func WithAuthorID(authorID string) ListOption {
+	return func(o *ListOptions) {
+		o.AuthorID = authorID
+	}
 }
 
 type MessageIndexer struct {
@@ -100,6 +117,13 @@ func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
 		}
 
 		defer res.Body.Close()
+
+		if res.IsError() {
+			b, _ := io.ReadAll(res.Body)
+			es.logger.Error("indexing message failed (es response)", slog.String("messageID", msg.ID), slog.Int("status", res.StatusCode), slog.String("body", string(b)))
+			return retry.RetryableError(fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(b)))
+		}
+		es.logger.Info("Message indexed", slog.String("index", es.index))
 		return nil
 	})
 
@@ -111,19 +135,29 @@ func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
 	return nil
 }
 
-func (es *MessageIndexer) ListDocuments(channel string) ([]IndexedMessage, error) {
+func (es *MessageIndexer) ListDocuments(channel string, opts ...ListOption) ([]IndexedMessage, error) {
 	es.logger.Debug("Calling List documents", slog.String("channel", channel))
 
+	var o ListOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	filters := []QueryClause{
+		{Term: map[string]string{"channel_id": channel}},
+	}
+	if o.AuthorID != "" {
+		filters = append(filters, QueryClause{Term: map[string]string{"author_id": o.AuthorID}})
+	}
+
 	query := SearchQuery{
-		Query: ESQuery{
-			Term: Term{
-				ChannelID: channel,
+		Query: Query{
+			Bool: &BoolQuery{
+				Filter: filters,
 			},
 		},
 		Sort: []SortQuery{
-			{
-				CreatedAt: SortOrder{Order: "desc"},
-			},
+			{CreatedAt: SortOrder{Order: "desc"}},
 		},
 	}
 
@@ -141,6 +175,11 @@ func (es *MessageIndexer) ListDocuments(channel string) ([]IndexedMessage, error
 		return nil, fmt.Errorf("es search error: %w", err)
 	}
 	defer res.Body.Close()
+	if res.IsError() {
+		b, _ := io.ReadAll(res.Body)
+		es.logger.Error("es error)", slog.String("channel", channel), slog.String("authorID", o.AuthorID), slog.Int("status", res.StatusCode), slog.String("body", string(b)))
+		return nil, fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(b))
+	}
 
 	var esResponse EsResponse
 

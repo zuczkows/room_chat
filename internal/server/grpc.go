@@ -178,7 +178,11 @@ func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesReques
 	if !isUserAMember {
 		return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
 	}
-	msgs, err := s.elastic.ListDocuments(in.Channel)
+	var authorID string
+	if in.AuthorId != nil {
+		authorID = *in.AuthorId
+	}
+	msgs, err := s.elastic.ListDocuments(in.Channel, elastic.WithAuthorID(authorID))
 	if err != nil {
 		s.logger.Error("Fetching document from ES failed", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, string(protocol.InternalServer))

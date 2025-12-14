@@ -30,6 +30,7 @@ message UpdateProfileRequest {
 
 message ListMessagesRequest {
     string channel = 1;
+    optional string author_id =2;
 }
 
 message ListMessagesResponse {
