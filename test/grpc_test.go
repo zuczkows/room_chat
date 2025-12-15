@@ -135,6 +135,31 @@ func TestGrpc(t *testing.T) {
 		AssertGrpcError(t, err, "Missing authorization header.", codes.Unauthenticated)
 	})
 
+	t.Run("GetMessageStats without authorization", func(t *testing.T) {
+		req := &pb.GetMessageStatsRequest{
+			ChannelId: "dummy",
+			AuthorId:  "dummy",
+			Inverval:  "dummy",
+		}
+		_, err := client.GetMessageStats(context.Background(), req)
+		AssertGrpcError(t, err, "Missing authorization header.", codes.Unauthenticated)
+	})
+
+	t.Run("GetMessageStats returns proper data when authorized", func(t *testing.T) {
+		auth := "Basic " + basicAuth(testUser1.Username, testUser1.Password)
+		ctx := metadata.AppendToOutgoingContext(context.Background(), "authorization", auth)
+
+		req := &pb.GetMessageStatsRequest{
+			ChannelId: channelUser1,
+			AuthorId:  testUser1.Username,
+			Inverval:  "1d",
+		}
+		response, err := client.GetMessageStats(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(response.Buckets))
+		require.Equal(t, 1, int(response.Buckets[0].Count))
+	})
+
 }
 
 func basicAuth(username, password string) string {

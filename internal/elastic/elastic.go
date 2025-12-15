@@ -77,7 +77,7 @@ type BucketResults struct {
 }
 
 type Query struct {
-	Bool *BoolQuery `json:"bool,omitempty"`
+	Bool BoolQuery `json:"bool,omitempty"`
 }
 
 type BoolQuery struct {
@@ -188,7 +188,7 @@ func (es *MessageIndexer) ListDocuments(channel string, opts ...ListOption) ([]I
 
 	query := SearchQuery{
 		Query: Query{
-			Bool: &BoolQuery{
+			Bool: BoolQuery{
 				Filter: filters,
 			},
 		},
@@ -235,7 +235,7 @@ func (es *MessageIndexer) GetMessageStats(channel, authorID, fixedInterval strin
 
 	q := AggSearchQuery{
 		Query: Query{
-			Bool: &BoolQuery{
+			Bool: BoolQuery{
 				Filter: []QueryClause{
 					{Term: map[string]string{"channel_id": channel}},
 					{Term: map[string]string{"author_id": authorID}},
@@ -270,12 +270,12 @@ func (es *MessageIndexer) GetMessageStats(channel, authorID, fixedInterval strin
 		return nil, parseESError(res)
 	}
 
-	var out AggSearchResponse
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+	var AggResponse AggSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&AggResponse); err != nil {
 		return nil, fmt.Errorf("decode stats response: %w", err)
 	}
 
-	agg, ok := out.Aggregations["messages_over_time"]
+	agg, ok := AggResponse.Aggregations["messages_over_time"]
 	if !ok {
 		return nil, fmt.Errorf("missing aggregation: messages_over_time")
 	}
@@ -290,12 +290,12 @@ func (es *MessageIndexer) GetMessageStats(channel, authorID, fixedInterval strin
 	return buckets, nil
 }
 
-func validateFixedInterval(v string) error {
-	switch v {
+func validateFixedInterval(interval string) error {
+	switch interval {
 	case "1s", "1m", "1h", "1d":
 		return nil
 	default:
-		return fmt.Errorf("invalid fixedInterval")
+		return fmt.Errorf("invalid interval")
 	}
 }
 
