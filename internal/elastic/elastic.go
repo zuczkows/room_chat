@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v7"
+	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"github.com/sethvargo/go-retry"
 	"github.com/zuczkows/room-chat/internal/protocol"
 )
@@ -40,6 +42,38 @@ type Hit struct {
 type SearchQuery struct {
 	Query Query       `json:"query"`
 	Sort  []SortQuery `json:"sort"`
+}
+
+type AggSearchQuery struct {
+	Query Query               `json:"query"`
+	Aggs  map[string]AggQuery `json:"aggs"`
+}
+
+type AggQuery struct {
+	DateHistogram DateHistogram `json:"date_histogram"`
+}
+
+type DateHistogram struct {
+	Field         string `json:"field"`
+	FixedInterval string `json:"fixed_interval"`
+	MinDocCount   int    `json:"min_doc_count"`
+}
+
+type AggSearchResponse struct {
+	Aggregations map[string]struct {
+		Buckets []Bucket `json:"buckets"`
+	} `json:"aggregations"`
+}
+
+type Bucket struct {
+	KeyAsString string `json:"key_as_string"`
+	Key         int64  `json:"key"`
+	DocCount    int    `json:"doc_count"`
+}
+
+type BucketResults struct {
+	Key   time.Time
+	Count int
 }
 
 type Query struct {
@@ -119,9 +153,11 @@ func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
 		defer res.Body.Close()
 
 		if res.IsError() {
-			b, _ := io.ReadAll(res.Body)
-			es.logger.Error("indexing message failed (es response)", slog.String("messageID", msg.ID), slog.Int("status", res.StatusCode), slog.String("body", string(b)))
-			return retry.RetryableError(fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(b)))
+			bodyBytes, err := io.ReadAll(res.Body)
+			if err != nil {
+				return retry.RetryableError(err)
+			}
+			return retry.RetryableError(fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(bodyBytes)))
 		}
 		es.logger.Info("Message indexed", slog.String("index", es.index))
 		return nil
@@ -176,9 +212,7 @@ func (es *MessageIndexer) ListDocuments(channel string, opts ...ListOption) ([]I
 	}
 	defer res.Body.Close()
 	if res.IsError() {
-		b, _ := io.ReadAll(res.Body)
-		es.logger.Error("es error)", slog.String("channel", channel), slog.String("authorID", o.AuthorID), slog.Int("status", res.StatusCode), slog.String("body", string(b)))
-		return nil, fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(b))
+		return nil, parseESError(res)
 	}
 
 	var esResponse EsResponse
@@ -192,4 +226,83 @@ func (es *MessageIndexer) ListDocuments(channel string, opts ...ListOption) ([]I
 		messages = append(messages, h.Source)
 	}
 	return messages, nil
+}
+
+func (es *MessageIndexer) GetMessageStats(channel, authorID, fixedInterval string) ([]BucketResults, error) {
+	if err := validateFixedInterval(fixedInterval); err != nil {
+		return nil, err
+	}
+
+	q := AggSearchQuery{
+		Query: Query{
+			Bool: &BoolQuery{
+				Filter: []QueryClause{
+					{Term: map[string]string{"channel_id": channel}},
+					{Term: map[string]string{"author_id": authorID}},
+				},
+			},
+		},
+		Aggs: map[string]AggQuery{
+			"messages_over_time": {
+				DateHistogram: DateHistogram{
+					Field:         "created_at",
+					FixedInterval: fixedInterval,
+					MinDocCount:   1,
+				},
+			},
+		},
+	}
+	body, err := json.Marshal(q)
+	if err != nil {
+		return nil, fmt.Errorf("marshal stats query: %w", err)
+	}
+
+	res, err := es.db.Search(
+		es.db.Search.WithIndex(es.index),
+		es.db.Search.WithBody(bytes.NewReader(body)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("es search error: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.IsError() {
+		return nil, parseESError(res)
+	}
+
+	var out AggSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode stats response: %w", err)
+	}
+
+	agg, ok := out.Aggregations["messages_over_time"]
+	if !ok {
+		return nil, fmt.Errorf("missing aggregation: messages_over_time")
+	}
+
+	buckets := make([]BucketResults, 0, len(agg.Buckets))
+	for _, b := range agg.Buckets {
+		buckets = append(buckets, BucketResults{
+			Key:   time.UnixMilli(b.Key).UTC(),
+			Count: b.DocCount,
+		})
+	}
+	return buckets, nil
+}
+
+func validateFixedInterval(v string) error {
+	switch v {
+	case "1s", "1m", "1h", "1d":
+		return nil
+	default:
+		return fmt.Errorf("invalid fixedInterval")
+	}
+}
+
+func parseESError(res *esapi.Response) error {
+	bodyBytes, err := io.ReadAll(res.Body)
+	if err != nil {
+		return errors.New("failed to read ES response body")
+	}
+	return fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(bodyBytes))
 }
