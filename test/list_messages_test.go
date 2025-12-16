@@ -126,6 +126,39 @@ func TestStorage(t *testing.T) {
 		require.Equal(t, "Authentication required.", errResp.Error)
 	})
 
+	t.Run("ListMessages with filters returns correct number of messages", func(t *testing.T) {
+		request := prepareListMessagesRequestWithFilter(t, channelUser1, testUser1.Username, accessTokenUser1)
+
+		resp, err := http.DefaultClient.Do(request)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var messages []elastic.IndexedMessage
+		err = json.NewDecoder(resp.Body).Decode(&messages)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(messages))
+		require.Equal(t, testMessageUser1, messages[0].Content)
+
+	})
+
+	t.Run("ListMessages with not existing authorID returns 0 messages", func(t *testing.T) {
+		request := prepareListMessagesRequestWithFilter(t, channelUser1, "dummy-not-exists", accessTokenUser1)
+
+		resp, err := http.DefaultClient.Do(request)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		require.Equal(t, http.StatusOK, resp.StatusCode)
+
+		var messages []elastic.IndexedMessage
+		err = json.NewDecoder(resp.Body).Decode(&messages)
+		require.NoError(t, err)
+		require.Equal(t, 0, len(messages))
+
+	})
+
 }
 
 func prepareListMessagesRequestWithoutAuthHeader(t *testing.T, channelName string) *http.Request {
@@ -134,5 +167,16 @@ func prepareListMessagesRequestWithoutAuthHeader(t *testing.T, channelName strin
 	q := request.URL.Query()
 	q.Add("channel", channelName)
 	request.URL.RawQuery = q.Encode()
+	return request
+}
+
+func prepareListMessagesRequestWithFilter(t *testing.T, channelName, authorID, token string) *http.Request {
+	request, err := http.NewRequest(http.MethodGet, "http://localhost:8080/channel/messages", nil)
+	require.NoError(t, err)
+	q := request.URL.Query()
+	q.Add("channel", channelName)
+	q.Add("author_id", authorID)
+	request.URL.RawQuery = q.Encode()
+	request.Header.Set("Authorization", token)
 	return request
 }

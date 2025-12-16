@@ -7,7 +7,7 @@
   },
   "database": {
     "host": "localhost",
-    "port": 5444,
+    "port": 5433,
     "user": "testuser",
     "password": "#env:DB_PASSWORD",
     "dbname": "chat",
@@ -16,7 +16,9 @@
   "elasticsearch": {
     "host": "localhost",
     "port": 9200,
-    "index": "messages"
+    "index": "messages",
+    "user": "elastic",
+    "password": "#env:ELASTIC_PASSWORD"
   },
   "grpc": {
     "host": "0.0.0.0",

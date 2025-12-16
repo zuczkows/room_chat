@@ -178,7 +178,11 @@ func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesReques
 	if !isUserAMember {
 		return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
 	}
-	msgs, err := s.elastic.ListDocuments(in.Channel)
+	var authorID string
+	if in.AuthorId != nil {
+		authorID = *in.AuthorId
+	}
+	msgs, err := s.elastic.ListDocuments(in.Channel, elastic.WithAuthorID(authorID))
 	if err != nil {
 		s.logger.Error("Fetching document from ES failed", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
@@ -198,5 +202,43 @@ func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesReques
 	return &pb.ListMessagesResponse{
 		Messages: protoMessages,
 	}, nil
+
+}
+
+func (s *GrpcServer) GetMessageStats(ctx context.Context, in *pb.GetMessageStatsRequest) (*pb.GetMessageStatsResponse, error) {
+	authenticatedUsername, err := GetUsernameFromContext(ctx)
+	if err != nil {
+		s.logger.Error("No authenticated user in context")
+		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
+	}
+
+	isUserAMember, err := s.channels.IsUserAMember(in.ChannelId, authenticatedUsername)
+	if err != nil {
+		switch {
+		case errors.Is(err, channels.ErrChannelDoesNotExist):
+			// do not inform about not existing channel - information disclosure
+			return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
+		default:
+			return nil, status.Error(codes.Internal, string(protocol.InternalServer))
+		}
+	}
+	if !isUserAMember {
+		return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
+	}
+	buckets, err := s.elastic.GetMessageStats(in.ChannelId, in.AuthorId, in.Inverval)
+	if err != nil {
+		s.logger.Error("Fetching stats from ES failed", slog.Any("error", err))
+		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
+	}
+
+	stats := make([]*pb.MessageStatsBucket, 0, len(buckets))
+	for _, b := range buckets {
+		stats = append(stats, &pb.MessageStatsBucket{
+			Key:   timestamppb.New(b.Key),
+			Count: int64(b.Count),
+		})
+	}
+
+	return &pb.GetMessageStatsResponse{Buckets: stats}, nil
 
 }

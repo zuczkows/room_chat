@@ -22,6 +22,7 @@ const (
 	RoomChat_RegisterProfile_FullMethodName = "/room_chat.RoomChat/RegisterProfile"
 	RoomChat_UpdateProfile_FullMethodName   = "/room_chat.RoomChat/UpdateProfile"
 	RoomChat_ListMessages_FullMethodName    = "/room_chat.RoomChat/ListMessages"
+	RoomChat_GetMessageStats_FullMethodName = "/room_chat.RoomChat/GetMessageStats"
 )
 
 // RoomChatClient is the client API for RoomChat service.
@@ -31,6 +32,7 @@ type RoomChatClient interface {
 	RegisterProfile(ctx context.Context, in *RegisterProfileRequest, opts ...grpc.CallOption) (*RegisterProfileResponse, error)
 	UpdateProfile(ctx context.Context, in *UpdateProfileRequest, opts ...grpc.CallOption) (*Empty, error)
 	ListMessages(ctx context.Context, in *ListMessagesRequest, opts ...grpc.CallOption) (*ListMessagesResponse, error)
+	GetMessageStats(ctx context.Context, in *GetMessageStatsRequest, opts ...grpc.CallOption) (*GetMessageStatsResponse, error)
 }
 
 type roomChatClient struct {
@@ -71,6 +73,16 @@ func (c *roomChatClient) ListMessages(ctx context.Context, in *ListMessagesReque
 	return out, nil
 }
 
+func (c *roomChatClient) GetMessageStats(ctx context.Context, in *GetMessageStatsRequest, opts ...grpc.CallOption) (*GetMessageStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMessageStatsResponse)
+	err := c.cc.Invoke(ctx, RoomChat_GetMessageStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // RoomChatServer is the server API for RoomChat service.
 // All implementations must embed UnimplementedRoomChatServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type RoomChatServer interface {
 	RegisterProfile(context.Context, *RegisterProfileRequest) (*RegisterProfileResponse, error)
 	UpdateProfile(context.Context, *UpdateProfileRequest) (*Empty, error)
 	ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesResponse, error)
+	GetMessageStats(context.Context, *GetMessageStatsRequest) (*GetMessageStatsResponse, error)
 	mustEmbedUnimplementedRoomChatServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedRoomChatServer) UpdateProfile(context.Context, *UpdateProfile
 }
 func (UnimplementedRoomChatServer) ListMessages(context.Context, *ListMessagesRequest) (*ListMessagesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListMessages not implemented")
+}
+func (UnimplementedRoomChatServer) GetMessageStats(context.Context, *GetMessageStatsRequest) (*GetMessageStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMessageStats not implemented")
 }
 func (UnimplementedRoomChatServer) mustEmbedUnimplementedRoomChatServer() {}
 func (UnimplementedRoomChatServer) testEmbeddedByValue()                  {}
@@ -172,6 +188,24 @@ func _RoomChat_ListMessages_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _RoomChat_GetMessageStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMessageStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RoomChatServer).GetMessageStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RoomChat_GetMessageStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RoomChatServer).GetMessageStats(ctx, req.(*GetMessageStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // RoomChat_ServiceDesc is the grpc.ServiceDesc for RoomChat service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var RoomChat_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListMessages",
 			Handler:    _RoomChat_ListMessages_Handler,
+		},
+		{
+			MethodName: "GetMessageStats",
+			Handler:    _RoomChat_GetMessageStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
