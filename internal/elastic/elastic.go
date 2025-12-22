@@ -77,15 +77,15 @@ type BucketResults struct {
 }
 
 type Query struct {
-	Bool BoolQuery `json:"bool,omitempty"`
+	Bool BoolQuery `json:"bool"`
 }
 
 type BoolQuery struct {
-	Filter []QueryClause `json:"filter,omitempty"`
+	Filter []QueryClause `json:"filter"`
 }
 
 type QueryClause struct {
-	Term map[string]string `json:"term,omitempty"`
+	Term map[string]string `json:"term"`
 }
 
 type SortQuery struct {
@@ -159,7 +159,6 @@ func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
 			}
 			return retry.RetryableError(fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(bodyBytes)))
 		}
-		es.logger.Info("Message indexed", slog.String("index", es.index))
 		return nil
 	})
 
