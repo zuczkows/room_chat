@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -29,7 +28,7 @@ type IndexedMessage struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-type EsResponse struct {
+type SearchResponse struct {
 	Hits struct {
 		Hits []Hit `json:"hits"`
 	} `json:"hits"`
@@ -40,13 +39,10 @@ type Hit struct {
 }
 
 type SearchQuery struct {
-	Query Query       `json:"query"`
-	Sort  []SortQuery `json:"sort"`
-}
-
-type AggSearchQuery struct {
 	Query Query               `json:"query"`
-	Aggs  map[string]AggQuery `json:"aggs"`
+	Aggs  map[string]AggQuery `json:"aggs,omitempty"`
+	Sort  []SortQuery         `json:"sort,omitempty"`
+	Size  int                 `json:"size,omitempty"`
 }
 
 type AggQuery struct {
@@ -56,7 +52,7 @@ type AggQuery struct {
 type DateHistogram struct {
 	Field         string `json:"field"`
 	FixedInterval string `json:"fixed_interval"`
-	MinDocCount   int    `json:"min_doc_count"`
+	MinDocCount   int64  `json:"min_doc_count"`
 }
 
 type AggSearchResponse struct {
@@ -68,12 +64,12 @@ type AggSearchResponse struct {
 type Bucket struct {
 	KeyAsString string `json:"key_as_string"`
 	Key         int64  `json:"key"`
-	DocCount    int    `json:"doc_count"`
+	DocCount    int64  `json:"doc_count"`
 }
 
 type BucketResults struct {
 	Key   time.Time
-	Count int
+	Count int64
 }
 
 type Query struct {
@@ -81,10 +77,10 @@ type Query struct {
 }
 
 type BoolQuery struct {
-	Filter []QueryClause `json:"filter"`
+	Filter []TermQuery `json:"filter"`
 }
 
-type QueryClause struct {
+type TermQuery struct {
 	Term map[string]string `json:"term"`
 }
 
@@ -153,11 +149,7 @@ func (es *MessageIndexer) IndexMessage(message protocol.Message) error {
 		defer res.Body.Close()
 
 		if res.IsError() {
-			bodyBytes, err := io.ReadAll(res.Body)
-			if err != nil {
-				return retry.RetryableError(err)
-			}
-			return retry.RetryableError(fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(bodyBytes)))
+			return parseESError(res)
 		}
 		return nil
 	})
@@ -178,11 +170,11 @@ func (es *MessageIndexer) ListDocuments(channel string, opts ...ListOption) ([]I
 		opt(&o)
 	}
 
-	filters := []QueryClause{
+	filters := []TermQuery{
 		{Term: map[string]string{"channel_id": channel}},
 	}
 	if o.AuthorID != "" {
-		filters = append(filters, QueryClause{Term: map[string]string{"author_id": o.AuthorID}})
+		filters = append(filters, TermQuery{Term: map[string]string{"author_id": o.AuthorID}})
 	}
 
 	query := SearchQuery{
@@ -214,28 +206,24 @@ func (es *MessageIndexer) ListDocuments(channel string, opts ...ListOption) ([]I
 		return nil, parseESError(res)
 	}
 
-	var esResponse EsResponse
+	var searchResponse SearchResponse
 
-	if err = json.NewDecoder(res.Body).Decode(&esResponse); err != nil {
+	if err = json.NewDecoder(res.Body).Decode(&searchResponse); err != nil {
 		return nil, fmt.Errorf("failed to decode es response: %w", err)
 	}
 
-	messages := make([]IndexedMessage, 0, len(esResponse.Hits.Hits))
-	for _, h := range esResponse.Hits.Hits {
+	messages := make([]IndexedMessage, 0, len(searchResponse.Hits.Hits))
+	for _, h := range searchResponse.Hits.Hits {
 		messages = append(messages, h.Source)
 	}
 	return messages, nil
 }
 
 func (es *MessageIndexer) GetMessageStats(channel, authorID, fixedInterval string) ([]BucketResults, error) {
-	if err := validateFixedInterval(fixedInterval); err != nil {
-		return nil, err
-	}
-
-	q := AggSearchQuery{
+	q := SearchQuery{
 		Query: Query{
 			Bool: BoolQuery{
-				Filter: []QueryClause{
+				Filter: []TermQuery{
 					{Term: map[string]string{"channel_id": channel}},
 					{Term: map[string]string{"author_id": authorID}},
 				},
@@ -250,6 +238,7 @@ func (es *MessageIndexer) GetMessageStats(channel, authorID, fixedInterval strin
 				},
 			},
 		},
+		Size: 0,
 	}
 	body, err := json.Marshal(q)
 	if err != nil {
@@ -289,19 +278,10 @@ func (es *MessageIndexer) GetMessageStats(channel, authorID, fixedInterval strin
 	return buckets, nil
 }
 
-func validateFixedInterval(interval string) error {
-	switch interval {
-	case "1s", "1m", "1h", "1d":
-		return nil
-	default:
-		return fmt.Errorf("invalid interval")
-	}
-}
-
 func parseESError(res *esapi.Response) error {
 	bodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
-		return errors.New("failed to read ES response body")
+		return retry.RetryableError(err)
 	}
-	return fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(bodyBytes))
+	return retry.RetryableError(fmt.Errorf("es error: status=%d body=%s", res.StatusCode, string(bodyBytes)))
 }
