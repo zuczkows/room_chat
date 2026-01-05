@@ -66,9 +66,11 @@ type GrpcConfig struct {
 }
 
 type ElasticsearchConfig struct {
-	Host  string `json:"host"`
-	Port  int    `json:"port"`
-	Index string `json:"index"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Index    string `json:"index"`
+	User     string `json:"user"`
+	Password Secret `json:"password"`
 }
 
 type LoggingConfig struct {

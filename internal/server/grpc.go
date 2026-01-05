@@ -159,26 +159,14 @@ func (s *GrpcServer) UpdateProfile(ctx context.Context, in *pb.UpdateProfileRequ
 }
 
 func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesRequest) (*pb.ListMessagesResponse, error) {
-	authenticatedUsername, err := GetUsernameFromContext(ctx)
-	if err != nil {
-		s.logger.Error("No authenticated user in context")
-		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
+	if err := s.authorizeChannelAccess(ctx, in.Channel); err != nil {
+		return nil, err
 	}
-
-	isUserAMember, err := s.channels.IsUserAMember(in.Channel, authenticatedUsername)
-	if err != nil {
-		switch {
-		case errors.Is(err, channels.ErrChannelDoesNotExist):
-			// do not inform about not existing channel - information disclosure
-			return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
-		default:
-			return nil, status.Error(codes.Internal, string(protocol.InternalServer))
-		}
+	var authorID string
+	if in.AuthorId != nil {
+		authorID = *in.AuthorId
 	}
-	if !isUserAMember {
-		return nil, status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
-	}
-	msgs, err := s.elastic.ListDocuments(in.Channel)
+	msgs, err := s.elastic.ListDocuments(in.Channel, elastic.WithAuthorID(authorID))
 	if err != nil {
 		s.logger.Error("Fetching document from ES failed", slog.Any("error", err))
 		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
@@ -199,4 +187,61 @@ func (s *GrpcServer) ListMessages(ctx context.Context, in *pb.ListMessagesReques
 		Messages: protoMessages,
 	}, nil
 
+}
+
+func (s *GrpcServer) GetMessageStats(ctx context.Context, in *pb.GetMessageStatsRequest) (*pb.GetMessageStatsResponse, error) {
+	if err := s.authorizeChannelAccess(ctx, in.ChannelId); err != nil {
+		return nil, err
+	}
+	if err := validateFixedInterval(in.Inverval); err != nil {
+		return nil, err
+	}
+	buckets, err := s.elastic.GetMessageStats(in.ChannelId, in.AuthorId, in.Inverval)
+	if err != nil {
+		s.logger.Error("Fetching stats from ES failed", slog.Any("error", err))
+		return nil, status.Error(codes.Internal, string(protocol.InternalServer))
+	}
+
+	stats := make([]*pb.MessageStatsBucket, 0, len(buckets))
+	for _, b := range buckets {
+		stats = append(stats, &pb.MessageStatsBucket{
+			Key:   timestamppb.New(b.Key),
+			Count: b.Count,
+		})
+	}
+
+	return &pb.GetMessageStatsResponse{Buckets: stats}, nil
+
+}
+
+func (s *GrpcServer) authorizeChannelAccess(ctx context.Context, channelID string) error {
+	authenticatedUsername, err := GetUsernameFromContext(ctx)
+	if err != nil {
+		s.logger.Error("No authenticated user in context")
+		return status.Error(codes.Internal, string(protocol.InternalServer))
+	}
+
+	isUserAMember, err := s.channels.IsUserAMember(channelID, authenticatedUsername)
+	if err != nil {
+		switch {
+		case errors.Is(err, channels.ErrChannelDoesNotExist):
+			// do not inform about not existing channel - information disclosure
+			return status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
+		default:
+			return status.Error(codes.Internal, string(protocol.InternalServer))
+		}
+	}
+	if !isUserAMember {
+		return status.Error(codes.InvalidArgument, string(protocol.NotMemberOfChannel))
+	}
+	return nil
+}
+
+func validateFixedInterval(interval string) error {
+	switch interval {
+	case "1s", "1m", "1h", "1d":
+		return nil
+	default:
+		return fmt.Errorf("invalid interval")
+	}
 }

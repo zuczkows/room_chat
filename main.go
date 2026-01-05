@@ -54,6 +54,8 @@ func setupApp() {
 		Addresses: []string{
 			fmt.Sprintf("http://%s:%d", cfg.Elasticsearch.Host, cfg.Elasticsearch.Port),
 		},
+		Username: cfg.Elasticsearch.User,
+		Password: cfg.Elasticsearch.Password.String(),
 	})
 	if err != nil {
 		log.Fatalf("Failed to create Elasticsearch client: %v", err)

@@ -108,6 +108,7 @@ func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request)
 		apperrors.SendError(w, http.StatusBadRequest, protocol.MissingRequiredFields)
 		return
 	}
+	authorID := r.URL.Query().Get("author_id")
 
 	isUserAMember, err := u.channels.IsUserAMember(channel, authenticatedUsername)
 	if err != nil {
@@ -125,7 +126,7 @@ func (u *UserHandler) HandleListMessages(w http.ResponseWriter, r *http.Request)
 		apperrors.SendError(w, http.StatusUnauthorized, protocol.NotMemberOfChannel)
 		return
 	}
-	msgs, err := u.elastic.ListDocuments(channel)
+	msgs, err := u.elastic.ListDocuments(channel, elastic.WithAuthorID(authorID))
 	if err != nil {
 		u.logger.Error("Fetching document from ES failed", slog.Any("error", err))
 		apperrors.SendError(w, http.StatusInternalServerError, protocol.InternalServer)

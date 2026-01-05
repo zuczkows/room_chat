@@ -10,6 +10,7 @@ service RoomChat{
     rpc RegisterProfile (RegisterProfileRequest) returns (RegisterProfileResponse);
     rpc UpdateProfile (UpdateProfileRequest) returns (Empty);
     rpc ListMessages (ListMessagesRequest) returns (ListMessagesResponse);
+    rpc GetMessageStats (GetMessageStatsRequest) returns (GetMessageStatsResponse);
 }
 
 message Empty {}
@@ -30,6 +31,7 @@ message UpdateProfileRequest {
 
 message ListMessagesRequest {
     string channel = 1;
+    optional string author_id =2;
 }
 
 message ListMessagesResponse {
@@ -42,4 +44,19 @@ message Message {
     string author_id = 3;
     string content = 4;
     google.protobuf.Timestamp created_at = 5;
+}
+
+message GetMessageStatsRequest {
+    string channel_id =1;
+    string author_id =2;
+    string inverval = 3;
+}
+
+message MessageStatsBucket {
+    google.protobuf.Timestamp key = 1;
+    int64 count =2;
+}
+
+message GetMessageStatsResponse {
+    repeated MessageStatsBucket buckets = 1;
 }
